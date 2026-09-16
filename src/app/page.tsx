@@ -1,12 +1,18 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import type { InspectionAnalysis } from "@/lib/schemas";
+
+type AnalyzeResponse = {
+  analysis: InspectionAnalysis;
+  reviewed: boolean;
+};
 
 export default function Home() {
   const [note, setNote] = useState(
     "三层东侧通道有建筑材料堵塞，旁边的电缆没有固定。",
   );
-  const [result, setResult] = useState<unknown>(null);
+  const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -41,7 +47,7 @@ export default function Home() {
         );
       }
 
-      setResult(data);
+      setResult(data as AnalyzeResponse);
     } catch (requestError) {
       setError(
         requestError instanceof Error
