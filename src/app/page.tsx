@@ -10,6 +10,8 @@ type AnalyzeResponse = {
 
 type Finding = InspectionAnalysis["findings"][number];
 
+type ReviewDecision = "PENDING" | "APPROVED" | "REJECTED";
+
 const categoryLabels: Record<Finding["category"], string> = {
   BLOCKED_ACCESS: "通道或出口堵塞",
   UNSAFE_CABLE: "电缆安全问题",
@@ -38,6 +40,9 @@ export default function Home() {
     "三层东侧通道有建筑材料堵塞，旁边的电缆没有固定。",
   );
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  const [reviewDecisions, setReviewDecisions] = useState<
+    Record<number, ReviewDecision>
+  >({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -47,6 +52,7 @@ export default function Home() {
     setLoading(true);
     setError("");
     setResult(null);
+    setReviewDecisions({});
 
     try {
       const response = await fetch("/api/analyze", {
@@ -82,6 +88,16 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function updateReviewDecision(
+    findingIndex: number,
+    decision: ReviewDecision,
+  ) {
+    setReviewDecisions((currentDecisions) => ({
+      ...currentDecisions,
+      [findingIndex]: decision,
+    }));
   }
 
   return (
@@ -233,16 +249,63 @@ export default function Home() {
                         </p>
 
                         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-800">
-                          {finding.uncertainty.map((item, itemIndex) => (
-                            <li key={`${item}-${itemIndex}`}>{item}</li>
-                          ))}
+                          {finding.uncertainty.map(
+                            (item, itemIndex) => (
+                              <li key={`${item}-${itemIndex}`}>
+                                {item}
+                              </li>
+                            ),
+                          )}
                         </ul>
                       </div>
                     )}
 
-                    <p className="mt-5 border-t border-slate-100 pt-4 text-xs font-medium text-slate-500">
-                      AI 草稿 · 必须由授权巡检人员审核
-                    </p>
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+                      <p className="text-sm font-medium text-slate-600">
+                        审核状态：
+                        {reviewDecisions[index] === "APPROVED"
+                          ? "已批准"
+                          : reviewDecisions[index] === "REJECTED"
+                            ? "已驳回"
+                            : "等待审核"}
+                      </p>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateReviewDecision(
+                              index,
+                              "REJECTED",
+                            )
+                          }
+                          className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
+                            reviewDecisions[index] === "REJECTED"
+                              ? "border-red-600 bg-red-600 text-white"
+                              : "border-red-200 text-red-700 hover:bg-red-50"
+                          }`}
+                        >
+                          驳回
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateReviewDecision(
+                              index,
+                              "APPROVED",
+                            )
+                          }
+                          className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
+                            reviewDecisions[index] === "APPROVED"
+                              ? "border-emerald-600 bg-emerald-600 text-white"
+                              : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                          }`}
+                        >
+                          批准
+                        </button>
+                      </div>
+                    </div>
                   </article>
                 ))}
               </div>
