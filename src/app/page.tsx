@@ -8,6 +8,31 @@ type AnalyzeResponse = {
   reviewed: boolean;
 };
 
+type Finding = InspectionAnalysis["findings"][number];
+
+const categoryLabels: Record<Finding["category"], string> = {
+  BLOCKED_ACCESS: "通道或出口堵塞",
+  UNSAFE_CABLE: "电缆安全问题",
+  MISSING_PPE: "缺少个人防护装备",
+  IMPROPER_STORAGE: "材料堆放不规范",
+};
+
+const riskLabels: Record<Finding["risk_level"], string> = {
+  LOW: "低风险",
+  MEDIUM: "中风险",
+  HIGH: "高风险",
+  CRITICAL: "严重风险",
+  UNCONFIRMED: "风险待确认",
+};
+
+const riskStyles: Record<Finding["risk_level"], string> = {
+  LOW: "bg-emerald-100 text-emerald-800",
+  MEDIUM: "bg-amber-100 text-amber-800",
+  HIGH: "bg-orange-100 text-orange-800",
+  CRITICAL: "bg-red-100 text-red-800",
+  UNCONFIRMED: "bg-slate-200 text-slate-700",
+};
+
 export default function Home() {
   const [note, setNote] = useState(
     "三层东侧通道有建筑材料堵塞，旁边的电缆没有固定。",
@@ -111,7 +136,7 @@ export default function Home() {
 
         {result !== null && (
           <section className="mt-8">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-bold text-slate-900">
                 AI 分析草稿
               </h2>
@@ -125,9 +150,103 @@ export default function Home() {
               以下内容由 AI 生成，不能直接作为最终安全结论。
             </p>
 
-            <pre className="mt-4 max-h-[600px] overflow-auto rounded-xl bg-slate-950 p-5 text-sm leading-6 text-slate-100">
-              {JSON.stringify(result, null, 2)}
-            </pre>
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-5">
+              <p className="text-sm font-medium text-slate-500">
+                巡检位置
+              </p>
+              <p className="mt-1 font-semibold text-slate-900">
+                {result.analysis.location}
+              </p>
+
+              <p className="mt-4 text-sm font-medium text-slate-500">
+                分析摘要
+              </p>
+              <p className="mt-1 text-slate-800">
+                {result.analysis.summary}
+              </p>
+            </div>
+
+            {result.analysis.findings.length === 0 ? (
+              <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-800">
+                当前备注中没有识别到系统支持的问题。
+              </div>
+            ) : (
+              <div className="mt-5 space-y-5">
+                {result.analysis.findings.map((finding, index) => (
+                  <article
+                    key={`${finding.category}-${index}`}
+                    className="rounded-xl border border-slate-200 p-5 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-blue-600">
+                          问题 {index + 1} ·{" "}
+                          {categoryLabels[finding.category]}
+                        </p>
+                        <h3 className="mt-1 text-lg font-bold text-slate-900">
+                          {finding.title}
+                        </h3>
+                      </div>
+
+                      <span
+                        className={`rounded-full px-3 py-1 text-sm font-medium ${
+                          riskStyles[finding.risk_level]
+                        }`}
+                      >
+                        {riskLabels[finding.risk_level]}
+                      </span>
+                    </div>
+
+                    <dl className="mt-5 grid gap-4">
+                      <div>
+                        <dt className="text-sm font-semibold text-slate-500">
+                          问题描述
+                        </dt>
+                        <dd className="mt-1 text-slate-800">
+                          {finding.description}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-sm font-semibold text-slate-500">
+                          可见证据
+                        </dt>
+                        <dd className="mt-1 text-slate-800">
+                          {finding.visible_evidence}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-sm font-semibold text-slate-500">
+                          建议整改措施
+                        </dt>
+                        <dd className="mt-1 text-slate-800">
+                          {finding.corrective_action}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    {finding.uncertainty.length > 0 && (
+                      <div className="mt-5 rounded-lg bg-amber-50 p-4">
+                        <p className="text-sm font-semibold text-amber-900">
+                          待人工确认
+                        </p>
+
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-800">
+                          {finding.uncertainty.map((item, itemIndex) => (
+                            <li key={`${item}-${itemIndex}`}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <p className="mt-5 border-t border-slate-100 pt-4 text-xs font-medium text-slate-500">
+                      AI 草稿 · 必须由授权巡检人员审核
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
         )}
       </div>
