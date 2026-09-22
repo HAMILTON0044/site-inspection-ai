@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# local training datasets
+/datasets/
+
 # next.js
 /.next/
 /out/
