@@ -33,6 +33,13 @@ type SelectedPhoto = {
   error: string;
 };
 
+type BatchDetectionProgress = {
+  completed: number;
+  total: number;
+  failed: number;
+  currentPhotoName: string;
+};
+
 const categoryLabels: Record<Finding["category"], string> = {
   BLOCKED_ACCESS: "通道或出口堵塞",
   UNSAFE_CABLE: "电缆安全问题",
@@ -85,6 +92,8 @@ export default function Home() {
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [activePhotoId, setActivePhotoId] = useState("");
   const [detecting, setDetecting] = useState(false);
+  const [batchProgress, setBatchProgress] =
+    useState<BatchDetectionProgress | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const photosRef = useRef<SelectedPhoto[]>([]);
   const activePhoto =
@@ -96,6 +105,13 @@ export default function Home() {
   const hasDetected = activePhoto?.detectionStatus === "DONE";
   const excludedDetectionIndexes =
     activePhoto?.excludedDetectionIndexes ?? EMPTY_EXCLUDED_INDEXES;
+  const allPhotosDetected =
+    photos.length > 0 &&
+    photos.every((photo) => photo.detectionStatus === "DONE");
+  const isBatchDetecting =
+    detecting &&
+    batchProgress !== null &&
+    batchProgress.currentPhotoName.length > 0;
 
   function updatePhoto(
     photoId: string,
@@ -229,6 +245,7 @@ export default function Home() {
     photosRef.current = nextPhotos;
     setPhotos(nextPhotos);
     setActivePhotoId(nextPhotos[0].id);
+    setBatchProgress(null);
     setError("");
     setResult(null);
     setReviewDecisions({});
@@ -245,7 +262,6 @@ export default function Home() {
   }
 
   async function runPhotoDetection(photo: SelectedPhoto) {
-    setDetecting(true);
     updatePhoto(photo.id, (currentPhoto) => ({
       ...currentPhoto,
       detectionStatus: "RUNNING",
@@ -276,8 +292,6 @@ export default function Home() {
         error: message,
       }));
       throw detectionError;
-    } finally {
-      setDetecting(false);
     }
   }
 
@@ -288,11 +302,80 @@ export default function Home() {
     }
 
     setError("");
+    setBatchProgress(null);
+    setDetecting(true);
 
     try {
       await runPhotoDetection(activePhoto);
     } catch {
       // runPhotoDetection 已经把错误保存到对应照片。
+    } finally {
+      setDetecting(false);
+    }
+  }
+
+  async function handleDetectAllPhotos() {
+    const pendingPhotos = photosRef.current.filter(
+      (photo) => photo.detectionStatus !== "DONE",
+    );
+
+    if (photosRef.current.length === 0) {
+      setError("请先选择施工现场图片。");
+      return;
+    }
+
+    if (pendingPhotos.length === 0) {
+      setBatchProgress({
+        completed: photosRef.current.length,
+        total: photosRef.current.length,
+        failed: 0,
+        currentPhotoName: "",
+      });
+      return;
+    }
+
+    const total = photosRef.current.length;
+    let completed = total - pendingPhotos.length;
+    let failed = 0;
+
+    setError("");
+    setResult(null);
+    setReviewDecisions({});
+    setDetecting(true);
+    setBatchProgress({
+      completed,
+      total,
+      failed,
+      currentPhotoName: pendingPhotos[0].file.name,
+    });
+
+    try {
+      for (const [photoIndex, photo] of pendingPhotos.entries()) {
+        setActivePhotoId(photo.id);
+        setBatchProgress({
+          completed,
+          total,
+          failed,
+          currentPhotoName: photo.file.name,
+        });
+
+        try {
+          await runPhotoDetection(photo);
+        } catch {
+          failed += 1;
+        }
+
+        completed += 1;
+        setBatchProgress({
+          completed,
+          total,
+          failed,
+          currentPhotoName:
+            pendingPhotos[photoIndex + 1]?.file.name ?? "",
+        });
+      }
+    } finally {
+      setDetecting(false);
     }
   }
 
@@ -311,6 +394,10 @@ export default function Home() {
       );
 
       if (latestActivePhoto !== undefined) {
+        if (latestActivePhoto.detectionStatus !== "DONE") {
+          setDetecting(true);
+        }
+
         const rawDetections =
           latestActivePhoto.detectionStatus === "DONE"
             ? latestActivePhoto.detections
@@ -464,11 +551,12 @@ export default function Home() {
                         type="button"
                         onClick={() => selectPhoto(photo.id)}
                         aria-pressed={isActive}
+                        disabled={detecting}
                         className={`rounded-lg border px-3 py-3 text-left transition ${
                           isActive
                             ? "border-blue-500 bg-blue-50 text-blue-900"
                             : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
-                        }`}
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
                       >
                         <span className="flex items-center justify-between gap-3 text-sm font-semibold">
                           <span>
@@ -498,16 +586,63 @@ export default function Home() {
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={handleImageDetection}
-              disabled={detecting || imageFile === null}
-              className="mt-4 rounded-xl border border-blue-600 px-5 py-2.5 font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {detecting
-                ? "正在加载模型并识别……"
-                : "识别当前照片"}
-            </button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={handleImageDetection}
+                disabled={detecting || imageFile === null}
+                className="rounded-xl border border-blue-600 px-5 py-2.5 font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {detecting && !isBatchDetecting
+                  ? "正在加载模型并识别……"
+                  : "识别当前照片"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDetectAllPhotos}
+                disabled={
+                  detecting || photos.length === 0 || allPhotosDetected
+                }
+                className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isBatchDetecting && batchProgress !== null
+                  ? `批量识别 ${batchProgress.completed}/${batchProgress.total}`
+                  : allPhotosDetected
+                    ? "全部照片已识别"
+                    : "识别全部照片"}
+              </button>
+            </div>
+
+            {batchProgress !== null && (
+              <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <p className="font-semibold text-blue-900">
+                    批量识别：{batchProgress.completed}/
+                    {batchProgress.total}
+                  </p>
+                  <p className="text-blue-700">
+                    {batchProgress.currentPhotoName.length > 0
+                      ? `正在识别：${batchProgress.currentPhotoName}`
+                      : batchProgress.failed > 0
+                        ? `已完成，失败 ${batchProgress.failed} 张`
+                        : "全部完成"}
+                  </p>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-100">
+                  <div
+                    className="h-full rounded-full bg-blue-600 transition-all"
+                    style={{
+                      width: `${
+                        (batchProgress.completed /
+                          batchProgress.total) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             {visionError.length > 0 && (
               <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
