@@ -23,6 +23,12 @@ type Finding = InspectionAnalysis["findings"][number];
 
 type ReviewDecision = "PENDING" | "APPROVED" | "REJECTED";
 
+type SelectedPhoto = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
 const categoryLabels: Record<Finding["category"], string> = {
   BLOCKED_ACCESS: "通道或出口堵塞",
   UNSAFE_CABLE: "电缆安全问题",
@@ -69,8 +75,8 @@ export default function Home() {
   >({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
+  const [activePhotoId, setActivePhotoId] = useState("");
   const [detections, setDetections] = useState<VisionDetection[]>([]);
   const [visionError, setVisionError] = useState("");
   const [detecting, setDetecting] = useState(false);
@@ -80,17 +86,22 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detectionsRef = useRef<VisionDetection[]>([]);
   const detectedImageRef = useRef<File | null>(null);
+  const photosRef = useRef<SelectedPhoto[]>([]);
   const excludedDetectionIndexesRef = useRef<Set<number>>(
     new Set(),
   );
+  const activePhoto =
+    photos.find((photo) => photo.id === activePhotoId) ?? null;
+  const imageFile = activePhoto?.file ?? null;
+  const previewUrl = activePhoto?.previewUrl ?? "";
 
   useEffect(() => {
-    if (previewUrl.length === 0) {
-      return;
-    }
-
-    return () => URL.revokeObjectURL(previewUrl);
-  }, [previewUrl]);
+    return () => {
+      for (const photo of photosRef.current) {
+        URL.revokeObjectURL(photo.previewUrl);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -163,7 +174,7 @@ export default function Home() {
   }, [detections, previewUrl]);
 
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
-    const selectedFile = event.target.files?.[0] ?? null;
+    const selectedFiles = Array.from(event.target.files ?? []);
 
     setVisionError("");
     setDetections([]);
@@ -173,28 +184,60 @@ export default function Home() {
     detectedImageRef.current = null;
     excludedDetectionIndexesRef.current = new Set();
 
-    if (selectedFile === null) {
-      setImageFile(null);
-      setPreviewUrl("");
+    if (selectedFiles.length === 0) {
       return;
     }
 
-    if (!selectedFile.type.startsWith("image/")) {
-      setImageFile(null);
-      setPreviewUrl("");
+    if (selectedFiles.length > 10) {
+      event.target.value = "";
+      setVisionError("一次最多选择 10 张图片。");
+      return;
+    }
+
+    if (selectedFiles.some((file) => !file.type.startsWith("image/"))) {
+      event.target.value = "";
       setVisionError("请选择 JPEG、PNG 或 WebP 图片。");
       return;
     }
 
-    if (selectedFile.size > 10 * 1024 * 1024) {
-      setImageFile(null);
-      setPreviewUrl("");
-      setVisionError("图片不能超过 10 MB。");
+    if (selectedFiles.some((file) => file.size > 10 * 1024 * 1024)) {
+      event.target.value = "";
+      setVisionError("每张图片不能超过 10 MB。");
       return;
     }
 
-    setImageFile(selectedFile);
-    setPreviewUrl(URL.createObjectURL(selectedFile));
+    const nextPhotos = selectedFiles.map((file, index) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+
+    for (const photo of photosRef.current) {
+      URL.revokeObjectURL(photo.previewUrl);
+    }
+
+    photosRef.current = nextPhotos;
+    setPhotos(nextPhotos);
+    setActivePhotoId(nextPhotos[0].id);
+    setResult(null);
+    setReviewDecisions({});
+  }
+
+  function selectPhoto(photoId: string) {
+    if (photoId === activePhotoId) {
+      return;
+    }
+
+    setActivePhotoId(photoId);
+    setVisionError("");
+    setDetections([]);
+    setHasDetected(false);
+    setExcludedDetectionIndexes([]);
+    setResult(null);
+    setReviewDecisions({});
+    detectionsRef.current = [];
+    detectedImageRef.current = null;
+    excludedDetectionIndexesRef.current = new Set();
   }
 
   async function handleImageDetection() {
@@ -348,14 +391,56 @@ export default function Home() {
 
             <input
               type="file"
+              multiple
               accept="image/jpeg,image/png,image/webp"
               onChange={handleImageChange}
               className="mt-2 block w-full rounded-xl border border-slate-300 p-3 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
             />
 
             <p className="mt-2 text-sm text-slate-500">
-              图片只在当前浏览器中由 YOLOv8 分析，不会上传给 LLM。支持 JPEG、PNG 和 WebP，最大 10 MB。
+              图片只在当前浏览器中由 YOLOv8 分析，不会上传给 LLM。一次最多 10 张，每张最大 10 MB。
             </p>
+
+            {photos.length > 0 && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold text-slate-800">
+                    已选择 {photos.length} 张照片
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    当前只识别和分析选中的照片
+                  </p>
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {photos.map((photo, index) => {
+                    const isActive = photo.id === activePhotoId;
+
+                    return (
+                      <button
+                        key={photo.id}
+                        type="button"
+                        onClick={() => selectPhoto(photo.id)}
+                        aria-pressed={isActive}
+                        className={`rounded-lg border px-3 py-3 text-left transition ${
+                          isActive
+                            ? "border-blue-500 bg-blue-50 text-blue-900"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
+                        }`}
+                      >
+                        <span className="block text-sm font-semibold">
+                          照片 {index + 1}
+                          {isActive ? " · 当前" : ""}
+                        </span>
+                        <span className="mt-1 block truncate text-xs opacity-75">
+                          {photo.file.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {previewUrl.length > 0 && (
               <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-950 p-2">
@@ -372,7 +457,9 @@ export default function Home() {
               disabled={detecting || imageFile === null}
               className="mt-4 rounded-xl border border-blue-600 px-5 py-2.5 font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {detecting ? "正在加载模型并识别……" : "识别照片"}
+              {detecting
+                ? "正在加载模型并识别……"
+                : "识别当前照片"}
             </button>
 
             {visionError.length > 0 && (
@@ -384,7 +471,7 @@ export default function Home() {
             {hasDetected && (
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="font-semibold text-slate-800">
-                  视觉检测结果
+                  当前照片的视觉检测结果
                 </p>
 
                 {detections.length === 0 ? (
