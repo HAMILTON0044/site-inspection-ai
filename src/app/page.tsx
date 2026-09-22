@@ -1,7 +1,18 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { InspectionAnalysis } from "@/lib/schemas";
+import {
+  detectPpe,
+  type PpeLabel,
+  type VisionDetection,
+} from "@/lib/vision";
 
 type AnalyzeResponse = {
   analysis: InspectionAnalysis;
@@ -35,6 +46,19 @@ const riskStyles: Record<Finding["risk_level"], string> = {
   UNCONFIRMED: "bg-slate-200 text-slate-700",
 };
 
+const ppeLabels: Record<PpeLabel, string> = {
+  Hardhat: "安全帽",
+  Mask: "口罩",
+  "NO-Hardhat": "未佩戴安全帽",
+  "NO-Mask": "未佩戴口罩",
+  "NO-Safety Vest": "未穿安全背心",
+  Person: "人员",
+  "Safety Cone": "安全锥",
+  "Safety Vest": "安全背心",
+  machinery: "机械设备",
+  vehicle: "车辆",
+};
+
 export default function Home() {
   const [note, setNote] = useState(
     "三层东侧通道有建筑材料堵塞，旁边的电缆没有固定。",
@@ -45,6 +69,153 @@ export default function Home() {
   >({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [detections, setDetections] = useState<VisionDetection[]>([]);
+  const [visionError, setVisionError] = useState("");
+  const [detecting, setDetecting] = useState(false);
+  const [hasDetected, setHasDetected] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const detectionsRef = useRef<VisionDetection[]>([]);
+  const detectedImageRef = useRef<File | null>(null);
+
+  useEffect(() => {
+    if (previewUrl.length === 0) {
+      return;
+    }
+
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (canvas === null || previewUrl.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const image = new Image();
+
+    image.onload = () => {
+      if (cancelled) {
+        return;
+      }
+
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext("2d");
+
+      if (context === null) {
+        return;
+      }
+
+      context.drawImage(image, 0, 0);
+      const lineWidth = Math.max(2, image.naturalWidth / 400);
+      const fontSize = Math.max(16, image.naturalWidth / 55);
+      context.lineWidth = lineWidth;
+      context.font = `600 ${fontSize}px sans-serif`;
+      context.textBaseline = "top";
+
+      for (const detection of detections) {
+        const isViolation = detection.label.startsWith("NO-");
+        const color = isViolation ? "#dc2626" : "#2563eb";
+        const label = `${ppeLabels[detection.label]} ${Math.round(
+          detection.confidence * 100,
+        )}%`;
+        const textWidth = context.measureText(label).width;
+        const labelHeight = fontSize + 10;
+        const labelY = Math.max(0, detection.box.y - labelHeight);
+
+        context.strokeStyle = color;
+        context.strokeRect(
+          detection.box.x,
+          detection.box.y,
+          detection.box.width,
+          detection.box.height,
+        );
+        context.fillStyle = color;
+        context.fillRect(
+          detection.box.x,
+          labelY,
+          textWidth + 12,
+          labelHeight,
+        );
+        context.fillStyle = "#ffffff";
+        context.fillText(
+          label,
+          detection.box.x + 6,
+          labelY + 5,
+        );
+      }
+    };
+
+    image.src = previewUrl;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detections, previewUrl]);
+
+  function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFile = event.target.files?.[0] ?? null;
+
+    setVisionError("");
+    setDetections([]);
+    setHasDetected(false);
+    detectionsRef.current = [];
+    detectedImageRef.current = null;
+
+    if (selectedFile === null) {
+      setImageFile(null);
+      setPreviewUrl("");
+      return;
+    }
+
+    if (!selectedFile.type.startsWith("image/")) {
+      setImageFile(null);
+      setPreviewUrl("");
+      setVisionError("请选择 JPEG、PNG 或 WebP 图片。");
+      return;
+    }
+
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setImageFile(null);
+      setPreviewUrl("");
+      setVisionError("图片不能超过 10 MB。");
+      return;
+    }
+
+    setImageFile(selectedFile);
+    setPreviewUrl(URL.createObjectURL(selectedFile));
+  }
+
+  async function handleImageDetection() {
+    if (imageFile === null) {
+      setVisionError("请先选择一张施工现场图片。");
+      return;
+    }
+
+    setDetecting(true);
+    setVisionError("");
+    setHasDetected(false);
+
+    try {
+      const nextDetections = await detectPpe(imageFile);
+      detectionsRef.current = nextDetections;
+      detectedImageRef.current = imageFile;
+      setDetections(nextDetections);
+      setHasDetected(true);
+    } catch (detectionError) {
+      setVisionError(
+        detectionError instanceof Error
+          ? detectionError.message
+          : "图片识别失败。",
+      );
+    } finally {
+      setDetecting(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,12 +226,34 @@ export default function Home() {
     setReviewDecisions({});
 
     try {
+      let visionDetections = detectionsRef.current;
+
+      if (
+        imageFile !== null &&
+        detectedImageRef.current !== imageFile
+      ) {
+        setDetecting(true);
+        visionDetections = await detectPpe(imageFile);
+        detectionsRef.current = visionDetections;
+        detectedImageRef.current = imageFile;
+        setDetections(visionDetections);
+        setHasDetected(true);
+        setDetecting(false);
+      }
+
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ note }),
+        body: JSON.stringify({
+          note,
+          visionDetections: visionDetections.map((detection) => ({
+            label: detection.label,
+            confidence: detection.confidence,
+            box: detection.box,
+          })),
+        }),
       });
 
       const data: unknown = await response.json();
@@ -86,6 +279,7 @@ export default function Home() {
           : "发生未知错误",
       );
     } finally {
+      setDetecting(false);
       setLoading(false);
     }
   }
@@ -113,14 +307,81 @@ export default function Home() {
           </h1>
 
           <p className="mt-3 text-slate-600">
-            输入现场巡检备注，生成等待人工确认的问题草稿。
+            在浏览器中识别现场照片，并结合巡检备注生成等待人工确认的问题草稿。
           </p>
         </header>
 
         <form onSubmit={handleSubmit} className="mt-8">
+          <fieldset>
+            <legend className="font-semibold text-slate-800">
+              现场照片
+            </legend>
+
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleImageChange}
+              className="mt-2 block w-full rounded-xl border border-slate-300 p-3 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
+            />
+
+            <p className="mt-2 text-sm text-slate-500">
+              图片只在当前浏览器中由 YOLOv8 分析，不会上传给 LLM。支持 JPEG、PNG 和 WebP，最大 10 MB。
+            </p>
+
+            {previewUrl.length > 0 && (
+              <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-950 p-2">
+                <canvas
+                  ref={canvasRef}
+                  className="h-auto max-h-[640px] w-full object-contain"
+                />
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleImageDetection}
+              disabled={detecting || imageFile === null}
+              className="mt-4 rounded-xl border border-blue-600 px-5 py-2.5 font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {detecting ? "正在加载模型并识别……" : "识别照片"}
+            </button>
+
+            {visionError.length > 0 && (
+              <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                {visionError}
+              </p>
+            )}
+
+            {hasDetected && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="font-semibold text-slate-800">
+                  视觉检测结果
+                </p>
+
+                {detections.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">
+                    当前阈值下未检测到模型支持的目标，请人工检查照片。
+                  </p>
+                ) : (
+                  <ul className="mt-2 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+                    {detections.map((detection, index) => (
+                      <li
+                        key={`${detection.label}-${index}`}
+                        className="rounded-lg bg-white px-3 py-2"
+                      >
+                        {ppeLabels[detection.label]} ·{" "}
+                        {Math.round(detection.confidence * 100)}%
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </fieldset>
+
           <label
             htmlFor="inspection-note"
-            className="block font-semibold text-slate-800"
+            className="mt-8 block font-semibold text-slate-800"
           >
             巡检备注
           </label>
@@ -136,10 +397,14 @@ export default function Home() {
 
           <button
             type="submit"
-            disabled={loading || note.trim().length < 3}
+            disabled={loading || detecting || note.trim().length < 3}
             className="mt-4 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "AI 正在分析……" : "开始分析"}
+            {detecting
+              ? "正在识别照片……"
+              : loading
+                ? "AI 正在分析……"
+                : "开始分析"}
           </button>
         </form>
 
