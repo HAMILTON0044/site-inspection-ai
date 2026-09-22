@@ -27,6 +27,10 @@ type SelectedPhoto = {
   id: string;
   file: File;
   previewUrl: string;
+  detectionStatus: "IDLE" | "RUNNING" | "DONE" | "ERROR";
+  detections: VisionDetection[];
+  excludedDetectionIndexes: number[];
+  error: string;
 };
 
 const categoryLabels: Record<Finding["category"], string> = {
@@ -65,6 +69,9 @@ const ppeLabels: Record<PpeLabel, string> = {
   vehicle: "车辆",
 };
 
+const EMPTY_DETECTIONS: VisionDetection[] = [];
+const EMPTY_EXCLUDED_INDEXES: number[] = [];
+
 export default function Home() {
   const [note, setNote] = useState(
     "三层东侧通道有建筑材料堵塞，旁边的电缆没有固定。",
@@ -77,23 +84,30 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [activePhotoId, setActivePhotoId] = useState("");
-  const [detections, setDetections] = useState<VisionDetection[]>([]);
-  const [visionError, setVisionError] = useState("");
   const [detecting, setDetecting] = useState(false);
-  const [hasDetected, setHasDetected] = useState(false);
-  const [excludedDetectionIndexes, setExcludedDetectionIndexes] =
-    useState<number[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const detectionsRef = useRef<VisionDetection[]>([]);
-  const detectedImageRef = useRef<File | null>(null);
   const photosRef = useRef<SelectedPhoto[]>([]);
-  const excludedDetectionIndexesRef = useRef<Set<number>>(
-    new Set(),
-  );
   const activePhoto =
     photos.find((photo) => photo.id === activePhotoId) ?? null;
   const imageFile = activePhoto?.file ?? null;
   const previewUrl = activePhoto?.previewUrl ?? "";
+  const detections = activePhoto?.detections ?? EMPTY_DETECTIONS;
+  const visionError = activePhoto?.error ?? "";
+  const hasDetected = activePhoto?.detectionStatus === "DONE";
+  const excludedDetectionIndexes =
+    activePhoto?.excludedDetectionIndexes ?? EMPTY_EXCLUDED_INDEXES;
+
+  function updatePhoto(
+    photoId: string,
+    update: (photo: SelectedPhoto) => SelectedPhoto,
+  ) {
+    const nextPhotos = photosRef.current.map((photo) =>
+      photo.id === photoId ? update(photo) : photo,
+    );
+
+    photosRef.current = nextPhotos;
+    setPhotos(nextPhotos);
+  }
 
   useEffect(() => {
     return () => {
@@ -176,33 +190,25 @@ export default function Home() {
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(event.target.files ?? []);
 
-    setVisionError("");
-    setDetections([]);
-    setHasDetected(false);
-    setExcludedDetectionIndexes([]);
-    detectionsRef.current = [];
-    detectedImageRef.current = null;
-    excludedDetectionIndexesRef.current = new Set();
-
     if (selectedFiles.length === 0) {
       return;
     }
 
     if (selectedFiles.length > 10) {
       event.target.value = "";
-      setVisionError("一次最多选择 10 张图片。");
+      setError("一次最多选择 10 张图片。");
       return;
     }
 
     if (selectedFiles.some((file) => !file.type.startsWith("image/"))) {
       event.target.value = "";
-      setVisionError("请选择 JPEG、PNG 或 WebP 图片。");
+      setError("请选择 JPEG、PNG 或 WebP 图片。");
       return;
     }
 
     if (selectedFiles.some((file) => file.size > 10 * 1024 * 1024)) {
       event.target.value = "";
-      setVisionError("每张图片不能超过 10 MB。");
+      setError("每张图片不能超过 10 MB。");
       return;
     }
 
@@ -210,6 +216,10 @@ export default function Home() {
       id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
       file,
       previewUrl: URL.createObjectURL(file),
+      detectionStatus: "IDLE" as const,
+      detections: [],
+      excludedDetectionIndexes: [],
+      error: "",
     }));
 
     for (const photo of photosRef.current) {
@@ -219,6 +229,7 @@ export default function Home() {
     photosRef.current = nextPhotos;
     setPhotos(nextPhotos);
     setActivePhotoId(nextPhotos[0].id);
+    setError("");
     setResult(null);
     setReviewDecisions({});
   }
@@ -229,43 +240,59 @@ export default function Home() {
     }
 
     setActivePhotoId(photoId);
-    setVisionError("");
-    setDetections([]);
-    setHasDetected(false);
-    setExcludedDetectionIndexes([]);
     setResult(null);
     setReviewDecisions({});
-    detectionsRef.current = [];
-    detectedImageRef.current = null;
-    excludedDetectionIndexesRef.current = new Set();
+  }
+
+  async function runPhotoDetection(photo: SelectedPhoto) {
+    setDetecting(true);
+    updatePhoto(photo.id, (currentPhoto) => ({
+      ...currentPhoto,
+      detectionStatus: "RUNNING",
+      error: "",
+    }));
+
+    try {
+      const nextDetections = await detectPpe(photo.file);
+      updatePhoto(photo.id, (currentPhoto) => ({
+        ...currentPhoto,
+        detectionStatus: "DONE",
+        detections: nextDetections,
+        excludedDetectionIndexes: [],
+        error: "",
+      }));
+      return nextDetections;
+    } catch (detectionError) {
+      const message =
+        detectionError instanceof Error
+          ? detectionError.message
+          : "图片识别失败。";
+
+      updatePhoto(photo.id, (currentPhoto) => ({
+        ...currentPhoto,
+        detectionStatus: "ERROR",
+        detections: [],
+        excludedDetectionIndexes: [],
+        error: message,
+      }));
+      throw detectionError;
+    } finally {
+      setDetecting(false);
+    }
   }
 
   async function handleImageDetection() {
-    if (imageFile === null) {
-      setVisionError("请先选择一张施工现场图片。");
+    if (activePhoto === null) {
+      setError("请先选择一张施工现场图片。");
       return;
     }
 
-    setDetecting(true);
-    setVisionError("");
-    setHasDetected(false);
+    setError("");
 
     try {
-      const nextDetections = await detectPpe(imageFile);
-      detectionsRef.current = nextDetections;
-      detectedImageRef.current = imageFile;
-      excludedDetectionIndexesRef.current = new Set();
-      setDetections(nextDetections);
-      setExcludedDetectionIndexes([]);
-      setHasDetected(true);
-    } catch (detectionError) {
-      setVisionError(
-        detectionError instanceof Error
-          ? detectionError.message
-          : "图片识别失败。",
-      );
-    } finally {
-      setDetecting(false);
+      await runPhotoDetection(activePhoto);
+    } catch {
+      // runPhotoDetection 已经把错误保存到对应照片。
     }
   }
 
@@ -278,24 +305,25 @@ export default function Home() {
     setReviewDecisions({});
 
     try {
-      let visionDetections = detectionsRef.current.filter(
-        (_detection, index) =>
-          !excludedDetectionIndexesRef.current.has(index),
+      let visionDetections: VisionDetection[] = [];
+      const latestActivePhoto = photosRef.current.find(
+        (photo) => photo.id === activePhotoId,
       );
 
-      if (
-        imageFile !== null &&
-        detectedImageRef.current !== imageFile
-      ) {
-        setDetecting(true);
-        visionDetections = await detectPpe(imageFile);
-        detectionsRef.current = visionDetections;
-        detectedImageRef.current = imageFile;
-        excludedDetectionIndexesRef.current = new Set();
-        setDetections(visionDetections);
-        setExcludedDetectionIndexes([]);
-        setHasDetected(true);
-        setDetecting(false);
+      if (latestActivePhoto !== undefined) {
+        const rawDetections =
+          latestActivePhoto.detectionStatus === "DONE"
+            ? latestActivePhoto.detections
+            : await runPhotoDetection(latestActivePhoto);
+        const excludedIndexes = new Set(
+          latestActivePhoto.detectionStatus === "DONE"
+            ? latestActivePhoto.excludedDetectionIndexes
+            : [],
+        );
+
+        visionDetections = rawDetections.filter(
+          (_detection, index) => !excludedIndexes.has(index),
+        );
       }
 
       const response = await fetch("/api/analyze", {
@@ -352,8 +380,12 @@ export default function Home() {
   }
 
   function toggleDetectionInclusion(detectionIndex: number) {
+    if (activePhoto === null) {
+      return;
+    }
+
     const nextExcludedIndexes = new Set(
-      excludedDetectionIndexesRef.current,
+      activePhoto.excludedDetectionIndexes,
     );
 
     if (nextExcludedIndexes.has(detectionIndex)) {
@@ -362,8 +394,10 @@ export default function Home() {
       nextExcludedIndexes.add(detectionIndex);
     }
 
-    excludedDetectionIndexesRef.current = nextExcludedIndexes;
-    setExcludedDetectionIndexes([...nextExcludedIndexes]);
+    updatePhoto(activePhoto.id, (photo) => ({
+      ...photo,
+      excludedDetectionIndexes: [...nextExcludedIndexes],
+    }));
   }
 
   return (
@@ -415,6 +449,14 @@ export default function Home() {
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {photos.map((photo, index) => {
                     const isActive = photo.id === activePhotoId;
+                    const statusLabel =
+                      photo.detectionStatus === "DONE"
+                        ? `已识别 ${photo.detections.length} 项`
+                        : photo.detectionStatus === "RUNNING"
+                          ? "识别中"
+                          : photo.detectionStatus === "ERROR"
+                            ? "识别失败"
+                            : "未识别";
 
                     return (
                       <button
@@ -428,9 +470,14 @@ export default function Home() {
                             : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"
                         }`}
                       >
-                        <span className="block text-sm font-semibold">
-                          照片 {index + 1}
-                          {isActive ? " · 当前" : ""}
+                        <span className="flex items-center justify-between gap-3 text-sm font-semibold">
+                          <span>
+                            照片 {index + 1}
+                            {isActive ? " · 当前" : ""}
+                          </span>
+                          <span className="text-xs font-medium opacity-70">
+                            {statusLabel}
+                          </span>
                         </span>
                         <span className="mt-1 block truncate text-xs opacity-75">
                           {photo.file.name}
@@ -485,35 +532,35 @@ export default function Home() {
                     </p>
 
                     <ul className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
-                    {detections.map((detection, index) => (
-                      <li
-                        key={`${detection.label}-${index}`}
-                        className="rounded-lg bg-white px-3 py-2"
-                      >
-                        <label className="flex cursor-pointer items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={
-                              !excludedDetectionIndexes.includes(index)
-                            }
-                            onChange={() =>
-                              toggleDetectionInclusion(index)
-                            }
-                            className="h-4 w-4 rounded border-slate-300 text-blue-600"
-                          />
-                          <span
-                            className={
-                              excludedDetectionIndexes.includes(index)
-                                ? "text-slate-400 line-through"
-                                : ""
-                            }
-                          >
-                            {ppeLabels[detection.label]} ·{" "}
-                            {Math.round(detection.confidence * 100)}%
-                          </span>
-                        </label>
-                      </li>
-                    ))}
+                      {detections.map((detection, index) => (
+                        <li
+                          key={`${detection.label}-${index}`}
+                          className="rounded-lg bg-white px-3 py-2"
+                        >
+                          <label className="flex cursor-pointer items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={
+                                !excludedDetectionIndexes.includes(index)
+                              }
+                              onChange={() =>
+                                toggleDetectionInclusion(index)
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                            />
+                            <span
+                              className={
+                                excludedDetectionIndexes.includes(index)
+                                  ? "text-slate-400 line-through"
+                                  : ""
+                              }
+                            >
+                              {ppeLabels[detection.label]} ·{" "}
+                              {Math.round(detection.confidence * 100)}%
+                            </span>
+                          </label>
+                        </li>
+                      ))}
                     </ul>
                   </>
                 )}
