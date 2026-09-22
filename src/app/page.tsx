@@ -75,9 +75,14 @@ export default function Home() {
   const [visionError, setVisionError] = useState("");
   const [detecting, setDetecting] = useState(false);
   const [hasDetected, setHasDetected] = useState(false);
+  const [excludedDetectionIndexes, setExcludedDetectionIndexes] =
+    useState<number[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const detectionsRef = useRef<VisionDetection[]>([]);
   const detectedImageRef = useRef<File | null>(null);
+  const excludedDetectionIndexesRef = useRef<Set<number>>(
+    new Set(),
+  );
 
   useEffect(() => {
     if (previewUrl.length === 0) {
@@ -163,8 +168,10 @@ export default function Home() {
     setVisionError("");
     setDetections([]);
     setHasDetected(false);
+    setExcludedDetectionIndexes([]);
     detectionsRef.current = [];
     detectedImageRef.current = null;
+    excludedDetectionIndexesRef.current = new Set();
 
     if (selectedFile === null) {
       setImageFile(null);
@@ -204,7 +211,9 @@ export default function Home() {
       const nextDetections = await detectPpe(imageFile);
       detectionsRef.current = nextDetections;
       detectedImageRef.current = imageFile;
+      excludedDetectionIndexesRef.current = new Set();
       setDetections(nextDetections);
+      setExcludedDetectionIndexes([]);
       setHasDetected(true);
     } catch (detectionError) {
       setVisionError(
@@ -226,7 +235,10 @@ export default function Home() {
     setReviewDecisions({});
 
     try {
-      let visionDetections = detectionsRef.current;
+      let visionDetections = detectionsRef.current.filter(
+        (_detection, index) =>
+          !excludedDetectionIndexesRef.current.has(index),
+      );
 
       if (
         imageFile !== null &&
@@ -236,7 +248,9 @@ export default function Home() {
         visionDetections = await detectPpe(imageFile);
         detectionsRef.current = visionDetections;
         detectedImageRef.current = imageFile;
+        excludedDetectionIndexesRef.current = new Set();
         setDetections(visionDetections);
+        setExcludedDetectionIndexes([]);
         setHasDetected(true);
         setDetecting(false);
       }
@@ -292,6 +306,21 @@ export default function Home() {
       ...currentDecisions,
       [findingIndex]: decision,
     }));
+  }
+
+  function toggleDetectionInclusion(detectionIndex: number) {
+    const nextExcludedIndexes = new Set(
+      excludedDetectionIndexesRef.current,
+    );
+
+    if (nextExcludedIndexes.has(detectionIndex)) {
+      nextExcludedIndexes.delete(detectionIndex);
+    } else {
+      nextExcludedIndexes.add(detectionIndex);
+    }
+
+    excludedDetectionIndexesRef.current = nextExcludedIndexes;
+    setExcludedDetectionIndexes([...nextExcludedIndexes]);
   }
 
   return (
@@ -363,17 +392,43 @@ export default function Home() {
                     当前阈值下未检测到模型支持的目标，请人工检查照片。
                   </p>
                 ) : (
-                  <ul className="mt-2 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
+                  <>
+                    <p className="mt-1 text-sm text-slate-500">
+                      取消勾选误检项目后，这些项目不会发送给 LLM。
+                    </p>
+
+                    <ul className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
                     {detections.map((detection, index) => (
                       <li
                         key={`${detection.label}-${index}`}
                         className="rounded-lg bg-white px-3 py-2"
                       >
-                        {ppeLabels[detection.label]} ·{" "}
-                        {Math.round(detection.confidence * 100)}%
+                        <label className="flex cursor-pointer items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={
+                              !excludedDetectionIndexes.includes(index)
+                            }
+                            onChange={() =>
+                              toggleDetectionInclusion(index)
+                            }
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                          />
+                          <span
+                            className={
+                              excludedDetectionIndexes.includes(index)
+                                ? "text-slate-400 line-through"
+                                : ""
+                            }
+                          >
+                            {ppeLabels[detection.label]} ·{" "}
+                            {Math.round(detection.confidence * 100)}%
+                          </span>
+                        </label>
                       </li>
                     ))}
-                  </ul>
+                    </ul>
+                  </>
                 )}
               </div>
             )}
