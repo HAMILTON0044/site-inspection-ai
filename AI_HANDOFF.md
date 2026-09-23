@@ -4,6 +4,8 @@
 
 本文档供项目组成员及后续 AI 编程助手使用。开始修改前，请先完整阅读本文档和根目录的 `AGENTS.md`。
 
+多人协作、角色权限、云端数据模型和问题状态机的正式设计见 `docs/COLLABORATION_SYSTEM_DESIGN.md`。云端技术选型见 `docs/ADR-001-CLOUD-STACK.md`。开始登录或数据库开发前必须先阅读这两份文档。
+
 ## 1. 项目目标
 
 施工主管日常巡检需要整理现场照片、文字备注、观察结果和整改措施。当前原型希望缩短这一流程：
@@ -157,6 +159,15 @@ src/components/inspection-history.tsx
 
 src/lib/inspection-store.ts
   IndexedDB 数据层；保存分析结果、审核状态、照片 Blob 和检测结果。
+
+docs/COLLABORATION_SYSTEM_DESIGN.md
+  多人协作产品规则、权限矩阵、数据模型、状态机、页面与 API 设计。
+
+docs/ADR-001-CLOUD-STACK.md
+  Supabase Auth、PostgreSQL、Private Storage 和 IndexedDB 的技术选型。
+
+supabase/migrations/202609230001_auth_projects.sql
+  第一阶段 profiles、projects、project_members 表和 RLS 草案；尚未连接云端执行。
 
 src/lib/vision.ts
   浏览器端动态加载 ONNX Runtime、图片 letterbox 预处理、YOLO 输出解析、坐标还原和 NMS。
@@ -332,13 +343,13 @@ git pull --ff-only origin main
 
 ## 12. 推荐的下一阶段
 
-优先完成“正式报告导出”：
+优先完成“认证与项目权限基础”：
 
-1. 生成包含审核后 finding 和证据照片来源的 PDF 或 Word 报告。
-2. 报告中加入带检测框的证据图片快照。
-3. 增加未保存修改提示和“新建巡检”操作。
-4. 后续如需团队协作，再增加云端数据库和对象存储同步。
-5. 浏览器验证至少覆盖：报告内容、分页、中文字体和下载文件。
+1. 按 `docs/ADR-001-CLOUD-STACK.md` 创建 Supabase 项目并配置本地环境变量。
+2. 建立 User、Project、ProjectMember 数据结构和 RLS。
+3. 完成登录、退出、受保护路由和服务端权限校验。
+4. 保留 IndexedDB 作为未提交草稿层，不要直接删除当前本地历史能力。
+5. 使用两个 Inspector 和一个 Manager 验证项目权限隔离。
 
 当前照片状态结构：
 
@@ -385,9 +396,11 @@ type SelectedPhoto = {
 
 建议顺序：
 
-1. 生成带证据照片文件名和检测框快照的 PDF 或 Word 报告。
-2. 增加未保存修改提示和明确的“新建巡检”操作。
-3. 评估是否需要云端数据库，以支持团队共享历史记录。
+1. 创建并连接 Supabase 项目。
+2. 实现账号登录与项目成员权限。
+3. 把正式提交的巡检同步到云端，IndexedDB 继续保存本地草稿。
+4. 实现项目 finding Dashboard 和整改状态机。
+5. 生成带证据照片文件名和检测框快照的 PDF 或 Word 报告。
 4. 使用现场照片评估置信度阈值和误检率。
 5. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
 6. 训练许可证清晰的自有模型。
