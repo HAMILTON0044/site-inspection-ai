@@ -25,6 +25,26 @@
 
 认证链路已用真实测试账号验证：注册后 trigger 正确生成 `INSPECTOR` profile；删除 Auth 用户后 profile 通过外键级联删除。测试账号已清理，项目当前不保留测试用户。
 
+`migrations/202609230002_inspections_findings_storage.sql` 创建：
+
+- `inspections`
+- `inspection_photos`
+- `vision_detections`
+- `findings`
+- `finding_evidence`
+- `finding_events`
+- `finding_follow_ups`
+- `follow_up_photos`
+- `generated_reports`
+- 巡检、finding、风险、事件、报告和 PPE 类别枚举
+- 草稿隐私、项目成员读取和追加跟进所需的 RLS policies
+- finding 证据一致性校验和首条审计事件 trigger
+- 私有 `inspection-photos` Bucket（10 MB，仅 JPEG/PNG/WebP）
+- 私有 `inspection-reports` Bucket（25 MB，仅 PDF/DOCX）
+- 按项目和巡检 UUID 路径校验的 Storage RLS policies
+
+该 migration 已于 2026-09-23 先使用 `BEGIN ... ROLLBACK` 在真实项目完成无副作用测试，随后正式执行。复核确认 9 张业务表全部启用 RLS、5 条 Storage policy 存在，两个 Bucket 均为 private。
+
 ## 重要安全约束
 
 - 新注册用户始终创建为 `INSPECTOR`，不能通过注册 metadata 把自己提升为 Manager。
@@ -32,6 +52,9 @@
 - `private` schema 不加入 Supabase Exposed Schemas。
 - 不在浏览器中使用 Supabase Secret Key。
 - 后续 migration 应先在本地或分支数据库测试，再应用到生产项目。
+- `inspection-photos` 路径必须使用 `{projectId}/{inspectionId}/photos/...` 或 `{projectId}/{inspectionId}/follow-ups/...`。
+- `inspection-reports` 路径必须使用 `{projectId}/{inspectionId}/reports/...`。
+- 正式记录状态变化必须通过后续受控 RPC 或服务端事务实现，不要开放客户端直接修改状态字段。
 
 ## 创建第一个 Manager
 

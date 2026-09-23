@@ -164,6 +164,19 @@ Zod 校验后的巡检问题草稿
 - `/api/analyze` 在服务端独立调用 `getClaims()` 校验身份，匿名请求返回 `401`，不只依赖页面跳转。
 - 已使用真实测试账号验证注册、邮件确认、登录、profile trigger 和默认 Inspector 角色；验收结束后已删除测试账号及其关联 profile。
 
+### 3.10 云端巡检、问题闭环与私有 Storage
+
+- 第二个 Supabase migration 已创建巡检、照片、视觉检测、finding、证据、事件、跟进、跟进照片和生成报告共 9 张业务表。
+- 草稿只有创建者可见；Manager 也不能读取其他人的草稿。提交后的记录才对同项目成员和 Manager 可见。
+- finding 原始内容只能在所属巡检仍为草稿时修改或删除；正式记录不开放客户端直接删除。
+- finding 证据 trigger 会拒绝跨巡检照片引用，以及 detection 与照片不匹配的引用。
+- 新 finding 会自动写入不可由普通客户端伪造的 `CREATED` 审计事件。
+- 跟进记录采用只追加模型；普通客户端不具备更新或删除既有跟进的权限。
+- 已创建私有 `inspection-photos` 和 `inspection-reports` Bucket，并用项目 UUID、巡检 UUID、对象所有者和巡检状态限制访问。
+- migration 先在真实 Supabase 使用事务回滚完成无副作用测试，再正式执行。
+- 云端复核确认：9 张表全部启用 RLS、业务表策略数量正确、5 条 Storage policy 存在，照片和报告 Bucket 均为 private。
+- 当前前端尚未调用这些表和 Bucket；IndexedDB 仍负责现有本地草稿。
+
 ## 4. 关键文件
 
 ```text
@@ -187,6 +200,9 @@ docs/ADR-001-CLOUD-STACK.md
 
 supabase/migrations/202609230001_auth_projects.sql
   第一阶段 profiles、projects、project_members 表和 RLS；已在 Supabase 云端执行。
+
+supabase/migrations/202609230002_inspections_findings_storage.sql
+  巡检、finding 闭环、审计记录、私有照片和报告 Storage 的云端结构与 RLS；已在 Supabase 云端执行。
 
 src/lib/supabase/client.ts
   浏览器端 Supabase client；只使用公开的 Project URL 和 Publishable key。
@@ -321,6 +337,9 @@ git status --short
 - 真实测试账号完成注册、邮箱确认和登录；`profiles` 自动生成且角色为 `INSPECTOR`、`is_active = true`。
 - 删除 Supabase Auth 测试账号后，用户列表为空，对应 `profiles` 记录由外键级联删除，复核数量为 0。
 - 停止开发服务器后，包含 `/`、`/login`、`/api/analyze` 和 Proxy 的正式 `npm run build` 已通过；开发服务器随后已恢复。
+- 第二个 migration 的 `BEGIN ... ROLLBACK` 无副作用测试成功，正式执行也返回成功。
+- 9 张新增业务表全部为 `rls=true`；策略数依次为 inspections 3、inspection_photos 3、vision_detections 4、findings 4、finding_evidence 3、finding_events 1、finding_follow_ups 2、follow_up_photos 2、generated_reports 2。
+- `inspection-photos` 和 `inspection-reports` Bucket 均为 private，限制分别为 10 MB 和 25 MB；5 条 Storage policy 已复核存在。
 
 ## 8. 安全与真实性约束
 
@@ -347,7 +366,7 @@ git status --short
 - 尚未生成正式 PDF 或 Word 巡检报告。
 - 巡检历史目前只保存在当前浏览器的 IndexedDB 中，不支持跨浏览器、跨设备或团队同步。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
-- 云端目前只有认证与项目权限基础表，尚未建立巡检记录、finding、整改事件和报告表。
+- 云端业务表和私有 Bucket 已建立，但现有页面尚未实现“提交巡检”云端事务、正式记录读取或 Dashboard。
 - 当前没有保留测试账号；Manager 提升和多角色权限隔离仍需后续重新创建测试账号验收。
 
 ## 10. 模型与许可证
@@ -451,9 +470,9 @@ type SelectedPhoto = {
 
 建议顺序：
 
-1. 创建首个 Manager，并使用两个 Inspector 和一个 Manager 验证项目权限。
-2. 验证退出、刷新 token、删除或禁用账号后的会话行为。
-3. 把正式提交的巡检同步到云端，IndexedDB 继续保存本地草稿。
+1. 实现受控的“提交巡检”服务端事务，把本地已审核结果和照片同步到云端。
+2. 创建首个 Manager，并使用两个 Inspector 和一个 Manager 验证项目与巡检 RLS 隔离。
+3. 验证退出、刷新 token、删除或禁用账号后的会话行为。
 4. 实现项目 finding Dashboard 和整改状态机。
 5. 生成带证据照片文件名和检测框快照的 PDF 或 Word 报告。
 6. 使用现场照片评估置信度阈值和误检率。
