@@ -83,12 +83,17 @@ const ppeLabels: Record<PpeLabel, string> = {
 const EMPTY_DETECTIONS: VisionDetection[] = [];
 const EMPTY_EXCLUDED_INDEXES: number[] = [];
 
+function getDetectionId(photoId: string, detectionIndex: number) {
+  return `${photoId}::${detectionIndex}`;
+}
+
 const EMPTY_FINDING: FindingEditorValue = {
   category: "BLOCKED_ACCESS",
   title: "",
   description: "",
   visible_evidence: "",
   evidence_photos: [],
+  evidence_detection_ids: [],
   risk_level: "UNCONFIRMED",
   corrective_action: "",
   uncertainty: [],
@@ -117,7 +122,13 @@ export default function Home() {
   const [batchProgress, setBatchProgress] =
     useState<BatchDetectionProgress | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewSectionRef = useRef<HTMLDivElement>(null);
   const photosRef = useRef<SelectedPhoto[]>([]);
+  const [highlightedDetectionIds, setHighlightedDetectionIds] = useState<
+    string[]
+  >([]);
+  const [evidenceNavigationMessage, setEvidenceNavigationMessage] =
+    useState("");
   const activePhoto =
     photos.find((photo) => photo.id === activePhotoId) ?? null;
   const imageFile = activePhoto?.file ?? null;
@@ -191,9 +202,14 @@ export default function Home() {
       context.font = `600 ${fontSize}px sans-serif`;
       context.textBaseline = "top";
 
-      for (const detection of detections) {
+      for (const [detectionIndex, detection] of detections.entries()) {
         const isViolation = detection.label.startsWith("NO-");
         const color = isViolation ? "#dc2626" : "#2563eb";
+        const isHighlighted =
+          activePhotoId.length > 0 &&
+          highlightedDetectionIds.includes(
+            getDetectionId(activePhotoId, detectionIndex),
+          );
         const label = `${ppeLabels[detection.label]} ${Math.round(
           detection.confidence * 100,
         )}%`;
@@ -201,14 +217,30 @@ export default function Home() {
         const labelHeight = fontSize + 10;
         const labelY = Math.max(0, detection.box.y - labelHeight);
 
-        context.strokeStyle = color;
+        if (isHighlighted) {
+          context.save();
+          context.strokeStyle = "#facc15";
+          context.lineWidth = lineWidth * 4;
+          context.shadowColor = "#facc15";
+          context.shadowBlur = lineWidth * 8;
+          context.strokeRect(
+            detection.box.x,
+            detection.box.y,
+            detection.box.width,
+            detection.box.height,
+          );
+          context.restore();
+        }
+
+        context.lineWidth = isHighlighted ? lineWidth * 2 : lineWidth;
+        context.strokeStyle = isHighlighted ? "#facc15" : color;
         context.strokeRect(
           detection.box.x,
           detection.box.y,
           detection.box.width,
           detection.box.height,
         );
-        context.fillStyle = color;
+        context.fillStyle = isHighlighted ? "#ca8a04" : color;
         context.fillRect(
           detection.box.x,
           labelY,
@@ -229,7 +261,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [detections, previewUrl]);
+  }, [activePhotoId, detections, highlightedDetectionIds, previewUrl]);
 
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(event.target.files ?? []);
@@ -277,6 +309,8 @@ export default function Home() {
     setError("");
     setResult(null);
     setReviewDecisions({});
+    setHighlightedDetectionIds([]);
+    setEvidenceNavigationMessage("");
     closeFindingEditor();
   }
 
@@ -286,6 +320,52 @@ export default function Home() {
     }
 
     setActivePhotoId(photoId);
+    setHighlightedDetectionIds([]);
+    setEvidenceNavigationMessage("");
+  }
+
+  function showFindingEvidence(
+    photoName: string,
+    evidenceDetectionIds: string[],
+  ) {
+    const photo =
+      photosRef.current.find((currentPhoto) =>
+        evidenceDetectionIds.some((detectionId) =>
+          detectionId.startsWith(`${currentPhoto.id}::`),
+        ),
+      ) ??
+      photosRef.current.find(
+        (currentPhoto) => currentPhoto.file.name === photoName,
+      );
+
+    if (photo === undefined) {
+      setEvidenceNavigationMessage(
+        `找不到证据照片“${photoName}”，它可能已被替换。`,
+      );
+      return;
+    }
+
+    const photoDetectionIdPrefix = `${photo.id}::`;
+    const matchingDetectionIds = evidenceDetectionIds.filter(
+      (detectionId) => detectionId.startsWith(photoDetectionIdPrefix),
+    );
+
+    setActivePhotoId(photo.id);
+    setHighlightedDetectionIds(matchingDetectionIds);
+    setEvidenceNavigationMessage(
+      matchingDetectionIds.length > 0
+        ? `已切换到“${photoName}”，并高亮 ${matchingDetectionIds.length} 个证据框。`
+        : `已切换到“${photoName}”。该 finding 没有精确的检测框引用，请人工查看整张照片。`,
+    );
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        previewSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      });
+    });
   }
 
   async function runPhotoDetection(photo: SelectedPhoto) {
@@ -332,6 +412,8 @@ export default function Home() {
     setBatchProgress(null);
     setResult(null);
     setReviewDecisions({});
+    setHighlightedDetectionIds([]);
+    setEvidenceNavigationMessage("");
     closeFindingEditor();
     setDetecting(true);
 
@@ -407,6 +489,8 @@ export default function Home() {
     setError("");
     setResult(null);
     setReviewDecisions({});
+    setHighlightedDetectionIds([]);
+    setEvidenceNavigationMessage("");
     closeFindingEditor();
     setDetecting(true);
 
@@ -424,6 +508,8 @@ export default function Home() {
     setError("");
     setResult(null);
     setReviewDecisions({});
+    setHighlightedDetectionIds([]);
+    setEvidenceNavigationMessage("");
     closeFindingEditor();
 
     try {
@@ -447,16 +533,22 @@ export default function Home() {
           return {
             photoId: photo.id,
             photoName: photo.file.name,
-            detections: photo.detections
-              .filter(
-                (_detection, index) =>
-                  !excludedIndexes.has(index),
-              )
-              .map((detection) => ({
-                label: detection.label,
-                confidence: detection.confidence,
-                box: detection.box,
-              })),
+            detections: photo.detections.flatMap(
+              (detection, detectionIndex) =>
+                excludedIndexes.has(detectionIndex)
+                  ? []
+                  : [
+                      {
+                        detectionId: getDetectionId(
+                          photo.id,
+                          detectionIndex,
+                        ),
+                        label: detection.label,
+                        confidence: detection.confidence,
+                        box: detection.box,
+                      },
+                    ],
+            ),
           };
         });
 
@@ -557,6 +649,17 @@ export default function Home() {
                   ? {
                       ...finding,
                       ...value,
+                      evidence_detection_ids:
+                        (finding.evidence_detection_ids ?? []).filter(
+                          (detectionId) =>
+                            photosRef.current.some(
+                              (photo) =>
+                                value.evidence_photos.includes(
+                                  photo.file.name,
+                                ) &&
+                                detectionId.startsWith(`${photo.id}::`),
+                            ),
+                        ),
                       modified_by_human: true,
                     }
                   : finding,
@@ -698,11 +801,18 @@ export default function Home() {
             )}
 
             {previewUrl.length > 0 && (
-              <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-950 p-2">
-                <canvas
-                  ref={canvasRef}
-                  className="h-auto max-h-[640px] w-full object-contain"
-                />
+              <div ref={previewSectionRef} className="mt-4">
+                {evidenceNavigationMessage.length > 0 && (
+                  <p className="mb-3 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm font-medium text-yellow-900">
+                    {evidenceNavigationMessage}
+                  </p>
+                )}
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950 p-2">
+                  <canvas
+                    ref={canvasRef}
+                    className="h-auto max-h-[640px] w-full object-contain"
+                  />
+                </div>
               </div>
             )}
 
@@ -790,7 +900,14 @@ export default function Home() {
                       {detections.map((detection, index) => (
                         <li
                           key={`${detection.label}-${index}`}
-                          className="rounded-lg bg-white px-3 py-2"
+                          className={`rounded-lg px-3 py-2 transition ${
+                            activePhoto !== null &&
+                            highlightedDetectionIds.includes(
+                              getDetectionId(activePhoto.id, index),
+                            )
+                              ? "bg-yellow-100 ring-2 ring-yellow-400"
+                              : "bg-white"
+                          }`}
                         >
                           <label className="flex cursor-pointer items-center gap-3">
                             <input
@@ -938,7 +1055,11 @@ export default function Home() {
                         编辑问题 {index + 1}
                       </h3>
                       <FindingEditor
-                        initialValue={finding}
+                        initialValue={{
+                          ...finding,
+                          evidence_detection_ids:
+                            finding.evidence_detection_ids ?? [],
+                        }}
                         photoNames={photos.map((photo) => photo.file.name)}
                         submitLabel="保存修改"
                         onSave={(value) => updateFinding(finding.id, value)}
@@ -1009,12 +1130,20 @@ export default function Home() {
                         <dd className="mt-2 flex flex-wrap gap-2">
                           {finding.evidence_photos.length > 0 ? (
                             finding.evidence_photos.map((photoName) => (
-                              <span
+                              <button
+                                type="button"
                                 key={photoName}
-                                className="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700"
+                                onClick={() =>
+                                  showFindingEvidence(
+                                    photoName,
+                                    finding.evidence_detection_ids ?? [],
+                                  )
+                                }
+                                className="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                title="查看并高亮该照片中的证据"
                               >
-                                {photoName}
-                              </span>
+                                查看照片：{photoName}
+                              </button>
                             ))
                           ) : (
                             <span className="text-slate-800">

@@ -8,6 +8,7 @@ import {
 export const runtime = "nodejs";
 
 const VisionDetectionSchema = z.object({
+  detectionId: z.string().min(1).max(1000),
   label: z.enum([
     "Hardhat",
     "Mask",
@@ -137,6 +138,9 @@ export async function POST(request: Request) {
 16. 每个 finding 都必须包含 evidence_photos 数组。如果使用了视觉检测证据，数组必须列出对应分组中的准确 photoName；如果只来自文字备注，返回空数组。
 17. evidence_photos 只能使用 photo_evidence 中实际提供的 photoName，不能改写、缩写或编造文件名。
 18. 不得把不同照片里的目标描述成彼此存在空间关系，也不得推断多张照片拍摄的是同一个人或物体。
+19. 每个 finding 都必须包含 evidence_detection_ids 数组。如果使用了视觉检测证据，必须逐项列出对应检测结果的准确 detectionId；如果只来自文字备注，返回空数组。
+20. evidence_detection_ids 只能使用 photo_evidence 中实际提供的 detectionId，不能改写或编造，并且对应检测必须来自 evidence_photos 已列出的照片。
+21. detectionId 只用于 evidence_detection_ids 结构化字段，不要把它写进 title、description、visible_evidence、corrective_action 或 uncertainty。
 
 必须使用以下 JSON 结构：
 {
@@ -149,6 +153,7 @@ export async function POST(request: Request) {
       "description": "string",
       "visible_evidence": "string",
       "evidence_photos": ["photo-file-name.jpg"],
+      "evidence_detection_ids": ["exact-detection-id"],
       "risk_level": "LOW | MEDIUM | HIGH | CRITICAL | UNCONFIRMED",
       "corrective_action": "string",
       "uncertainty": ["string"],
@@ -223,6 +228,14 @@ ${JSON.stringify(parsedRequest.data.photoEvidence, null, 2)}
     const allowedPhotoNames = new Set(
       parsedRequest.data.photoEvidence.map((photo) => photo.photoName),
     );
+    const detectionPhotoNames = new Map(
+      parsedRequest.data.photoEvidence.flatMap((photo) =>
+        photo.detections.map((detection) => [
+          detection.detectionId,
+          photo.photoName,
+        ] as const),
+      ),
+    );
     const invalidPhotoNames = parsedAnalysis.data.findings.flatMap(
       (finding) =>
         finding.evidence_photos.filter(
@@ -236,6 +249,29 @@ ${JSON.stringify(parsedRequest.data.photoEvidence, null, 2)}
           error: "MODEL_REFERENCED_UNKNOWN_PHOTO",
           message: "模型引用了不存在的证据照片。",
           invalidPhotoNames: [...new Set(invalidPhotoNames)],
+          rawOutput,
+        },
+        { status: 502 },
+      );
+    }
+
+    const invalidDetectionIds = parsedAnalysis.data.findings.flatMap(
+      (finding) =>
+        finding.evidence_detection_ids.filter((detectionId) => {
+          const photoName = detectionPhotoNames.get(detectionId);
+          return (
+            photoName === undefined ||
+            !finding.evidence_photos.includes(photoName)
+          );
+        }),
+    );
+
+    if (invalidDetectionIds.length > 0) {
+      return Response.json(
+        {
+          error: "MODEL_REFERENCED_UNKNOWN_DETECTION",
+          message: "模型引用了不存在或不属于证据照片的检测框。",
+          invalidDetectionIds: [...new Set(invalidDetectionIds)],
           rawOutput,
         },
         { status: 502 },

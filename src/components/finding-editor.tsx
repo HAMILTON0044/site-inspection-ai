@@ -12,6 +12,7 @@ export type FindingEditorValue = Pick<
   | "description"
   | "visible_evidence"
   | "evidence_photos"
+  | "evidence_detection_ids"
   | "risk_level"
   | "corrective_action"
   | "uncertainty"

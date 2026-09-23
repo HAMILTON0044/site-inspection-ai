@@ -21,6 +21,7 @@ export const FindingDraftSchema = z.object({
   description: z.string().min(1),
   visible_evidence: z.string().min(1),
   evidence_photos: z.array(z.string().min(1)).max(10),
+  evidence_detection_ids: z.array(z.string().min(1)).max(100).default([]),
   risk_level: RiskLevelSchema,
   corrective_action: z.string().min(1),
   uncertainty: z.array(z.string()),
