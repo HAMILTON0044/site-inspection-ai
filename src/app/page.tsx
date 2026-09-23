@@ -12,6 +12,13 @@ import {
   FindingEditor,
   type FindingEditorValue,
 } from "@/components/finding-editor";
+import { InspectionHistory } from "@/components/inspection-history";
+import {
+  deleteInspectionRecord,
+  listInspectionRecords,
+  saveInspectionRecord,
+  type StoredInspectionRecord,
+} from "@/lib/inspection-store";
 import {
   detectPpe,
   type PpeLabel,
@@ -107,6 +114,20 @@ export default function Home() {
   const [reviewDecisions, setReviewDecisions] = useState<
     Record<string, ReviewDecision>
   >({});
+  const [historyRecords, setHistoryRecords] = useState<
+    StoredInspectionRecord[]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyBusyRecordId, setHistoryBusyRecordId] = useState<
+    string | null
+  >(null);
+  const [historyMessage, setHistoryMessage] = useState("");
+  const [currentRecordId, setCurrentRecordId] = useState<string | null>(
+    null,
+  );
+  const [currentRecordCreatedAt, setCurrentRecordCreatedAt] = useState<
+    string | null
+  >(null);
   const [editingFindingId, setEditingFindingId] = useState<string | null>(
     null,
   );
@@ -150,6 +171,182 @@ export default function Home() {
     setEditingFindingId(null);
     setIsAddingFinding(false);
     setPendingDeleteFindingId(null);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    listInspectionRecords()
+      .then((records) => {
+        if (!cancelled) {
+          setHistoryRecords(records);
+        }
+      })
+      .catch((historyError: unknown) => {
+        if (!cancelled) {
+          setHistoryMessage(
+            historyError instanceof Error
+              ? historyError.message
+              : "无法读取本地巡检历史。",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleSaveInspection() {
+    if (result === null) {
+      setHistoryMessage("请先完成一次巡检分析。 ");
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const recordId = currentRecordId ?? crypto.randomUUID();
+    const createdAt = currentRecordCreatedAt ?? now;
+    const location = result.analysis.location.trim();
+    const title =
+      location.length > 0 && location !== "未提供"
+        ? location
+        : note.trim().slice(0, 30) || "未命名巡检";
+    const record: StoredInspectionRecord = {
+      version: 1,
+      id: recordId,
+      title,
+      createdAt,
+      updatedAt: now,
+      note,
+      analysis: result.analysis,
+      reviewDecisions,
+      activePhotoId,
+      photos: photosRef.current.map((photo) => ({
+        id: photo.id,
+        fileName: photo.file.name,
+        fileType: photo.file.type,
+        fileLastModified: photo.file.lastModified,
+        blob: photo.file,
+        detectionStatus: photo.detectionStatus,
+        detections: photo.detections,
+        excludedDetectionIndexes: photo.excludedDetectionIndexes,
+        error: photo.error,
+      })),
+    };
+
+    setHistoryBusyRecordId("SAVE");
+    setHistoryMessage("");
+
+    try {
+      await saveInspectionRecord(record);
+      const records = await listInspectionRecords();
+      setHistoryRecords(records);
+      setCurrentRecordId(recordId);
+      setCurrentRecordCreatedAt(createdAt);
+      setHistoryMessage(
+        currentRecordId === null
+          ? "巡检记录已保存到当前浏览器。"
+          : "当前巡检记录已更新。",
+      );
+    } catch (historyError) {
+      setHistoryMessage(
+        historyError instanceof Error
+          ? historyError.message
+          : "保存巡检记录失败，浏览器存储空间可能不足。",
+      );
+    } finally {
+      setHistoryBusyRecordId(null);
+    }
+  }
+
+  function handleLoadInspection(record: StoredInspectionRecord) {
+    setHistoryBusyRecordId(record.id);
+    setHistoryMessage("");
+
+    try {
+      for (const photo of photosRef.current) {
+        URL.revokeObjectURL(photo.previewUrl);
+      }
+
+      const restoredPhotos: SelectedPhoto[] = record.photos.map((photo) => {
+        const file = new File([photo.blob], photo.fileName, {
+          type: photo.fileType,
+          lastModified: photo.fileLastModified,
+        });
+
+        return {
+          id: photo.id,
+          file,
+          previewUrl: URL.createObjectURL(file),
+          detectionStatus:
+            photo.detectionStatus === "RUNNING"
+              ? "IDLE"
+              : photo.detectionStatus,
+          detections: photo.detections,
+          excludedDetectionIndexes: photo.excludedDetectionIndexes,
+          error: photo.error,
+        };
+      });
+
+      photosRef.current = restoredPhotos;
+      setPhotos(restoredPhotos);
+      setActivePhotoId(
+        restoredPhotos.some((photo) => photo.id === record.activePhotoId)
+          ? record.activePhotoId
+          : (restoredPhotos[0]?.id ?? ""),
+      );
+      setNote(record.note);
+      setResult({ analysis: record.analysis, reviewed: false });
+      setReviewDecisions(record.reviewDecisions);
+      setCurrentRecordId(record.id);
+      setCurrentRecordCreatedAt(record.createdAt);
+      setBatchProgress(null);
+      setError("");
+      setHighlightedDetectionIds([]);
+      setEvidenceNavigationMessage("");
+      closeFindingEditor();
+      setHistoryMessage("已载入巡检记录及其照片和审核状态。 ");
+    } catch (historyError) {
+      setHistoryMessage(
+        historyError instanceof Error
+          ? historyError.message
+          : "载入巡检记录失败。",
+      );
+    } finally {
+      setHistoryBusyRecordId(null);
+    }
+  }
+
+  async function handleDeleteInspection(recordId: string) {
+    setHistoryBusyRecordId(recordId);
+    setHistoryMessage("");
+
+    try {
+      await deleteInspectionRecord(recordId);
+      setHistoryRecords((records) =>
+        records.filter((record) => record.id !== recordId),
+      );
+
+      if (currentRecordId === recordId) {
+        setCurrentRecordId(null);
+        setCurrentRecordCreatedAt(null);
+      }
+
+      setHistoryMessage("本地巡检记录已删除。当前页面内容未被清空。 ");
+    } catch (historyError) {
+      setHistoryMessage(
+        historyError instanceof Error
+          ? historyError.message
+          : "删除本地巡检记录失败。",
+      );
+    } finally {
+      setHistoryBusyRecordId(null);
+    }
   }
 
   function updatePhoto(
@@ -309,6 +506,8 @@ export default function Home() {
     setError("");
     setResult(null);
     setReviewDecisions({});
+    setCurrentRecordId(null);
+    setCurrentRecordCreatedAt(null);
     setHighlightedDetectionIds([]);
     setEvidenceNavigationMessage("");
     closeFindingEditor();
@@ -726,6 +925,18 @@ export default function Home() {
             在浏览器中识别现场照片，并结合巡检备注生成等待人工确认的问题草稿。
           </p>
         </header>
+
+        <InspectionHistory
+          records={historyRecords}
+          currentRecordId={currentRecordId}
+          canSave={result !== null}
+          loading={historyLoading}
+          busyRecordId={historyBusyRecordId}
+          message={historyMessage}
+          onSave={handleSaveInspection}
+          onLoad={handleLoadInspection}
+          onDelete={handleDeleteInspection}
+        />
 
         <form onSubmit={handleSubmit} className="mt-8">
           <fieldset>
