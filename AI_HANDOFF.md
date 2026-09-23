@@ -155,6 +155,15 @@ Zod 校验后的巡检问题草稿
 - 云端复核结果：`profiles` 2 条 policy、`projects` 3 条 policy、`project_members` 3 条 policy。
 - 目前尚未把登录界面和云端表接入现有巡检页面；IndexedDB 仍是当前可用的数据层。
 
+### 3.9 登录、注册与访问保护
+
+- 新增 `/login` 登录和注册页面，支持邮箱密码认证与巡检员姓名 metadata。
+- 新注册用户仍由数据库 trigger 固定创建为 `INSPECTOR`，前端不能把自己提升为 Manager。
+- Next.js 16 `proxy.ts` 会刷新 Supabase 会话；未登录访问 `/` 会重定向到 `/login`，已登录访问 `/login` 会返回工作台。
+- 根布局在已登录时显示当前用户、角色和退出按钮。
+- `/api/analyze` 在服务端独立调用 `getClaims()` 校验身份，匿名请求返回 `401`，不只依赖页面跳转。
+- 已验证匿名重定向和 API 401；真实邮箱注册、邮件验证、登录和退出仍需使用测试账号完成端到端验收。
+
 ## 4. 关键文件
 
 ```text
@@ -184,6 +193,24 @@ src/lib/supabase/client.ts
 
 src/lib/supabase/server.ts
   Next.js 服务端 Supabase client；通过 cookies 共享登录会话。
+
+src/lib/supabase/proxy.ts
+  刷新 Supabase 会话，并执行登录页与工作台之间的访问控制。
+
+src/proxy.ts
+  Next.js 16 Proxy 入口；当前匹配 `/` 和 `/login`。
+
+src/app/login/page.tsx
+  邮箱密码登录和巡检员注册页面。
+
+src/app/login/actions.ts
+  登录、注册 Server Actions；注册角色不接受客户端输入。
+
+src/app/auth/actions.ts
+  退出登录 Server Action。
+
+src/components/auth-status.tsx
+  已登录用户身份、角色和退出按钮。
 
 src/lib/vision.ts
   浏览器端动态加载 ONNX Runtime、图片 letterbox 预处理、YOLO 输出解析、坐标还原和 NMS。
@@ -288,6 +315,9 @@ git status --short
 - Supabase 项目创建成功且状态为 Healthy，主数据库位于 Singapore。
 - 首个云端 migration 执行成功；复核查询返回 `profiles`、`projects`、`project_members` 及 2、3、3 条 RLS policies。
 - Supabase client 新增后，ESLint 与 TypeScript 严格类型检查通过。
+- 匿名访问 `/` 会跳转到 `/login`，登录与注册表单可见。
+- 匿名 POST `/api/analyze` 返回 HTTP 401。
+- 认证页面、Proxy 和 API 权限校验新增后，ESLint、TypeScript 与 `git diff --check` 通过。
 
 ## 8. 安全与真实性约束
 
@@ -315,6 +345,7 @@ git status --short
 - 巡检历史目前只保存在当前浏览器的 IndexedDB 中，不支持跨浏览器、跨设备或团队同步。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
 - 云端目前只有认证与项目权限基础表，尚未建立巡检记录、finding、整改事件和报告表。
+- 尚未使用真实邮箱完成注册、邮件验证、登录、退出和 Manager 角色端到端验收。
 
 ## 10. 模型与许可证
 
@@ -368,7 +399,7 @@ git pull --ff-only origin main
 
 1. Supabase 项目、本地环境变量和 client 封装已经完成。
 2. User、Project、ProjectMember 数据结构和第一阶段 RLS 已经部署。
-3. 下一步完成登录、退出、受保护路由和服务端权限校验。
+3. 登录、注册、退出、受保护路由和服务端权限校验代码已经完成；下一步使用真实测试账号端到端验收。
 4. 保留 IndexedDB 作为未提交草稿层，不要直接删除当前本地历史能力。
 5. 使用两个 Inspector 和一个 Manager 验证项目权限隔离。
 
@@ -417,7 +448,7 @@ type SelectedPhoto = {
 
 建议顺序：
 
-1. 实现账号登录、退出和受保护路由。
+1. 使用真实邮箱验证注册、登录、退出和 session 刷新。
 2. 创建首个 Manager，并使用两个 Inspector 和一个 Manager 验证项目权限。
 3. 把正式提交的巡检同步到云端，IndexedDB 继续保存本地草稿。
 4. 实现项目 finding Dashboard 和整改状态机。

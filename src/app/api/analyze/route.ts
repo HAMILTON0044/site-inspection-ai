@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { callLlm } from "@/lib/llm";
+import { createClient } from "@/lib/supabase/server";
 import {
   InspectionAnalysisDraftSchema,
   InspectionAnalysisSchema,
@@ -94,6 +95,19 @@ function extractFirstJsonObject(value: string): string {
 
 export async function POST(request: Request) {
   try {
+    const supabase = await createClient();
+    const { data: authData } = await supabase.auth.getClaims();
+
+    if (!authData?.claims) {
+      return Response.json(
+        {
+          error: "UNAUTHORIZED",
+          message: "请先登录后再进行巡检分析。",
+        },
+        { status: 401 },
+      );
+    }
+
     const requestBody: unknown = await request.json();
     const parsedRequest = RequestSchema.safeParse(requestBody);
 
