@@ -1,6 +1,8 @@
 "use client";
 
-import * as ort from "onnxruntime-web/all";
+import type * as Ort from "onnxruntime-web";
+
+type OrtModule = typeof import("onnxruntime-web/all");
 
 const MODEL_URL = "/models/construction-ppe-yolov8n.onnx";
 const INPUT_SIZE = 640;
@@ -39,9 +41,20 @@ type Candidate = VisionDetection & {
   y2: number;
 };
 
-let sessionPromise: Promise<ort.InferenceSession> | null = null;
+let runtimePromise: Promise<OrtModule> | null = null;
+let sessionPromise: Promise<Ort.InferenceSession> | null = null;
 
-function getSession(): Promise<ort.InferenceSession> {
+function getRuntime(): Promise<OrtModule> {
+  if (runtimePromise === null) {
+    runtimePromise = import("onnxruntime-web/all");
+  }
+
+  return runtimePromise;
+}
+
+async function getSession(): Promise<Ort.InferenceSession> {
+  const ort = await getRuntime();
+
   if (sessionPromise === null) {
     ort.env.wasm.numThreads = 1;
     sessionPromise = ort.InferenceSession.create(MODEL_URL, {
@@ -102,7 +115,7 @@ function applyNonMaximumSuppression(
   }));
 }
 
-function createInputTensor(bitmap: ImageBitmap) {
+function createInputTensor(bitmap: ImageBitmap, ort: OrtModule) {
   const scale = Math.min(
     INPUT_SIZE / bitmap.width,
     INPUT_SIZE / bitmap.height,
@@ -164,7 +177,7 @@ function createInputTensor(bitmap: ImageBitmap) {
 }
 
 function parseOutput(
-  output: ort.Tensor,
+  output: Ort.Tensor,
   imageWidth: number,
   imageHeight: number,
   scale: number,
@@ -251,7 +264,11 @@ export async function detectPpe(
   const bitmap = await createImageBitmap(imageFile);
 
   try {
-    const { tensor, scale, padX, padY } = createInputTensor(bitmap);
+    const ort = await getRuntime();
+    const { tensor, scale, padX, padY } = createInputTensor(
+      bitmap,
+      ort,
+    );
     const session = await getSession();
     const results = await session.run({ images: tensor });
     const output = results.output0;

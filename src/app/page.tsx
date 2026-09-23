@@ -314,15 +314,10 @@ export default function Home() {
     }
   }
 
-  async function handleDetectAllPhotos() {
+  async function runPendingPhotoDetections() {
     const pendingPhotos = photosRef.current.filter(
       (photo) => photo.detectionStatus !== "DONE",
     );
-
-    if (photosRef.current.length === 0) {
-      setError("请先选择施工现场图片。");
-      return;
-    }
 
     if (pendingPhotos.length === 0) {
       setBatchProgress({
@@ -331,17 +326,13 @@ export default function Home() {
         failed: 0,
         currentPhotoName: "",
       });
-      return;
+      return 0;
     }
 
     const total = photosRef.current.length;
     let completed = total - pendingPhotos.length;
     let failed = 0;
 
-    setError("");
-    setResult(null);
-    setReviewDecisions({});
-    setDetecting(true);
     setBatchProgress({
       completed,
       total,
@@ -349,31 +340,47 @@ export default function Home() {
       currentPhotoName: pendingPhotos[0].file.name,
     });
 
-    try {
-      for (const [photoIndex, photo] of pendingPhotos.entries()) {
-        setActivePhotoId(photo.id);
-        setBatchProgress({
-          completed,
-          total,
-          failed,
-          currentPhotoName: photo.file.name,
-        });
+    for (const [photoIndex, photo] of pendingPhotos.entries()) {
+      setActivePhotoId(photo.id);
+      setBatchProgress({
+        completed,
+        total,
+        failed,
+        currentPhotoName: photo.file.name,
+      });
 
-        try {
-          await runPhotoDetection(photo);
-        } catch {
-          failed += 1;
-        }
-
-        completed += 1;
-        setBatchProgress({
-          completed,
-          total,
-          failed,
-          currentPhotoName:
-            pendingPhotos[photoIndex + 1]?.file.name ?? "",
-        });
+      try {
+        await runPhotoDetection(photo);
+      } catch {
+        failed += 1;
       }
+
+      completed += 1;
+      setBatchProgress({
+        completed,
+        total,
+        failed,
+        currentPhotoName:
+          pendingPhotos[photoIndex + 1]?.file.name ?? "",
+      });
+    }
+
+    return failed;
+  }
+
+  async function handleDetectAllPhotos() {
+    if (photosRef.current.length === 0) {
+      setError("请先选择施工现场图片。");
+      return;
+    }
+
+    setError("");
+    setResult(null);
+    setReviewDecisions({});
+    setDetecting(true);
+
+    try {
+      await runPendingPhotoDetections();
     } finally {
       setDetecting(false);
     }
@@ -388,30 +395,38 @@ export default function Home() {
     setReviewDecisions({});
 
     try {
-      let visionDetections: VisionDetection[] = [];
-      const latestActivePhoto = photosRef.current.find(
-        (photo) => photo.id === activePhotoId,
-      );
-
-      if (latestActivePhoto !== undefined) {
-        if (latestActivePhoto.detectionStatus !== "DONE") {
-          setDetecting(true);
-        }
-
-        const rawDetections =
-          latestActivePhoto.detectionStatus === "DONE"
-            ? latestActivePhoto.detections
-            : await runPhotoDetection(latestActivePhoto);
-        const excludedIndexes = new Set(
-          latestActivePhoto.detectionStatus === "DONE"
-            ? latestActivePhoto.excludedDetectionIndexes
-            : [],
-        );
-
-        visionDetections = rawDetections.filter(
-          (_detection, index) => !excludedIndexes.has(index),
-        );
+      if (
+        photosRef.current.some(
+          (photo) => photo.detectionStatus !== "DONE",
+        )
+      ) {
+        setDetecting(true);
+        await runPendingPhotoDetections();
+        setDetecting(false);
       }
+
+      const photoEvidence = photosRef.current
+        .filter((photo) => photo.detectionStatus === "DONE")
+        .map((photo) => {
+          const excludedIndexes = new Set(
+            photo.excludedDetectionIndexes,
+          );
+
+          return {
+            photoId: photo.id,
+            photoName: photo.file.name,
+            detections: photo.detections
+              .filter(
+                (_detection, index) =>
+                  !excludedIndexes.has(index),
+              )
+              .map((detection) => ({
+                label: detection.label,
+                confidence: detection.confidence,
+                box: detection.box,
+              })),
+          };
+        });
 
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -420,11 +435,7 @@ export default function Home() {
         },
         body: JSON.stringify({
           note,
-          visionDetections: visionDetections.map((detection) => ({
-            label: detection.label,
-            confidence: detection.confidence,
-            box: detection.box,
-          })),
+          photoEvidence,
         }),
       });
 
@@ -529,7 +540,7 @@ export default function Home() {
                     已选择 {photos.length} 张照片
                   </p>
                   <p className="text-sm text-slate-500">
-                    当前只识别和分析选中的照片
+                    检测结果按照片保存，开始分析时汇总全部照片
                   </p>
                 </div>
 
@@ -818,6 +829,28 @@ export default function Home() {
                         </dt>
                         <dd className="mt-1 text-slate-800">
                           {finding.visible_evidence}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-sm font-semibold text-slate-500">
+                          证据来源
+                        </dt>
+                        <dd className="mt-2 flex flex-wrap gap-2">
+                          {finding.evidence_photos.length > 0 ? (
+                            finding.evidence_photos.map((photoName) => (
+                              <span
+                                key={photoName}
+                                className="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700"
+                              >
+                                {photoName}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-slate-800">
+                              巡检备注
+                            </span>
+                          )}
                         </dd>
                       </div>
 
