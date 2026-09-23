@@ -12,7 +12,14 @@ import {
   FindingEditor,
   type FindingEditorValue,
 } from "@/components/finding-editor";
+import { CloudSubmission } from "@/components/cloud-submission";
 import { InspectionHistory } from "@/components/inspection-history";
+import {
+  loadCloudProjects,
+  submitInspectionToCloud,
+  type CloudSubmissionStage,
+} from "@/lib/cloud-inspection";
+import type { CloudProject } from "@/lib/cloud-inspection-schema";
 import {
   deleteInspectionRecord,
   listInspectionRecords,
@@ -122,6 +129,12 @@ export default function Home() {
     string | null
   >(null);
   const [historyMessage, setHistoryMessage] = useState("");
+  const [cloudProjects, setCloudProjects] = useState<CloudProject[]>([]);
+  const [cloudProjectsLoading, setCloudProjectsLoading] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudMessage, setCloudMessage] = useState("");
+  const [submittedInspectionId, setSubmittedInspectionId] = useState("");
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(
     null,
   );
@@ -166,6 +179,20 @@ export default function Home() {
     detecting &&
     batchProgress !== null &&
     batchProgress.currentPhotoName.length > 0;
+  const findingReviewCounts = (result?.analysis.findings ?? []).reduce(
+    (counts, finding) => {
+      const decision = reviewDecisions[finding.id] ?? "PENDING";
+      counts[decision] += 1;
+      return counts;
+    },
+    { PENDING: 0, APPROVED: 0, REJECTED: 0 },
+  );
+  const canSubmitToCloud =
+    result !== null &&
+    photos.length > 0 &&
+    selectedProjectId.length > 0 &&
+    findingReviewCounts.PENDING === 0 &&
+    submittedInspectionId.length === 0;
 
   function closeFindingEditor() {
     setEditingFindingId(null);
@@ -194,6 +221,42 @@ export default function Home() {
       .finally(() => {
         if (!cancelled) {
           setHistoryLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    loadCloudProjects()
+      .then((projects) => {
+        if (cancelled) {
+          return;
+        }
+
+        setCloudProjects(projects);
+        setSelectedProjectId((currentProjectId) =>
+          projects.some((project) => project.id === currentProjectId)
+            ? currentProjectId
+            : (projects[0]?.id ?? ""),
+        );
+      })
+      .catch((projectError: unknown) => {
+        if (!cancelled) {
+          setCloudMessage(
+            projectError instanceof Error
+              ? projectError.message
+              : "无法读取云端项目。",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCloudProjectsLoading(false);
         }
       });
 
@@ -264,6 +327,56 @@ export default function Home() {
     }
   }
 
+  async function handleCloudSubmit() {
+    if (result === null || selectedProjectId.length === 0) {
+      setCloudMessage("请先完成分析并选择所属项目。 ");
+      return;
+    }
+
+    setCloudBusy(true);
+    setCloudMessage("");
+
+    const updateCloudProgress = (
+      stage: CloudSubmissionStage,
+      completed: number,
+      total: number,
+    ) => {
+      if (stage === "CREATING_DRAFT") {
+        setCloudMessage("正在创建受保护的云端草稿……");
+      } else if (stage === "UPLOADING_PHOTOS") {
+        setCloudMessage(`正在上传私有照片 ${completed + 1}/${total}……`);
+      } else if (stage === "SUBMITTING_DATA") {
+        setCloudMessage("照片上传完成，正在执行数据库事务……");
+      } else {
+        setCloudMessage("提交未完成，正在清理云端草稿和照片……");
+      }
+    };
+
+    try {
+      const submission = await submitInspectionToCloud({
+        projectId: selectedProjectId,
+        note,
+        analysis: result.analysis,
+        reviewDecisions,
+        photos: photosRef.current,
+        onProgress: updateCloudProgress,
+      });
+
+      setSubmittedInspectionId(submission.inspectionId);
+      setCloudMessage(
+        `正式提交成功：已保存 ${photosRef.current.length} 张照片和 ${submission.findingCount} 条已批准问题。`,
+      );
+    } catch (submissionError) {
+      setCloudMessage(
+        submissionError instanceof Error
+          ? submissionError.message
+          : "云端提交失败。",
+      );
+    } finally {
+      setCloudBusy(false);
+    }
+  }
+
   function handleLoadInspection(record: StoredInspectionRecord) {
     setHistoryBusyRecordId(record.id);
     setHistoryMessage("");
@@ -309,6 +422,8 @@ export default function Home() {
       setError("");
       setHighlightedDetectionIds([]);
       setEvidenceNavigationMessage("");
+      setSubmittedInspectionId("");
+      setCloudMessage("");
       closeFindingEditor();
       setHistoryMessage("已载入巡检记录及其照片和审核状态。 ");
     } catch (historyError) {
@@ -510,6 +625,8 @@ export default function Home() {
     setCurrentRecordCreatedAt(null);
     setHighlightedDetectionIds([]);
     setEvidenceNavigationMessage("");
+    setSubmittedInspectionId("");
+    setCloudMessage("");
     closeFindingEditor();
   }
 
@@ -613,6 +730,7 @@ export default function Home() {
     setReviewDecisions({});
     setHighlightedDetectionIds([]);
     setEvidenceNavigationMessage("");
+    setSubmittedInspectionId("");
     closeFindingEditor();
     setDetecting(true);
 
@@ -690,6 +808,7 @@ export default function Home() {
     setReviewDecisions({});
     setHighlightedDetectionIds([]);
     setEvidenceNavigationMessage("");
+    setSubmittedInspectionId("");
     closeFindingEditor();
     setDetecting(true);
 
@@ -709,6 +828,7 @@ export default function Home() {
     setReviewDecisions({});
     setHighlightedDetectionIds([]);
     setEvidenceNavigationMessage("");
+    setSubmittedInspectionId("");
     closeFindingEditor();
 
     try {
@@ -794,6 +914,7 @@ export default function Home() {
     findingId: string,
     decision: ReviewDecision,
   ) {
+    setSubmittedInspectionId("");
     setReviewDecisions((currentDecisions) => ({
       ...currentDecisions,
       [findingId]: decision,
@@ -809,6 +930,7 @@ export default function Home() {
   }
 
   function addFinding(value: FindingEditorValue) {
+    setSubmittedInspectionId("");
     const finding: Finding = {
       ...value,
       id: crypto.randomUUID(),
@@ -836,6 +958,7 @@ export default function Home() {
     findingId: string,
     value: FindingEditorValue,
   ) {
+    setSubmittedInspectionId("");
     setResult((currentResult) =>
       currentResult === null
         ? currentResult
@@ -871,6 +994,7 @@ export default function Home() {
   }
 
   function deleteFinding(findingId: string) {
+    setSubmittedInspectionId("");
     setResult((currentResult) =>
       currentResult === null
         ? currentResult
@@ -892,6 +1016,8 @@ export default function Home() {
     if (activePhoto === null) {
       return;
     }
+
+    setSubmittedInspectionId("");
 
     const nextExcludedIndexes = new Set(
       activePhoto.excludedDetectionIndexes,
@@ -936,6 +1062,21 @@ export default function Home() {
           onSave={handleSaveInspection}
           onLoad={handleLoadInspection}
           onDelete={handleDeleteInspection}
+        />
+
+        <CloudSubmission
+          projects={cloudProjects}
+          selectedProjectId={selectedProjectId}
+          projectsLoading={cloudProjectsLoading}
+          busy={cloudBusy}
+          canSubmit={canSubmitToCloud}
+          pendingFindings={findingReviewCounts.PENDING}
+          approvedFindings={findingReviewCounts.APPROVED}
+          rejectedFindings={findingReviewCounts.REJECTED}
+          message={cloudMessage}
+          submittedInspectionId={submittedInspectionId}
+          onProjectChange={setSelectedProjectId}
+          onSubmit={handleCloudSubmit}
         />
 
         <form onSubmit={handleSubmit} className="mt-8">
@@ -1161,7 +1302,10 @@ export default function Home() {
           <textarea
             id="inspection-note"
             value={note}
-            onChange={(event) => setNote(event.target.value)}
+            onChange={(event) => {
+              setNote(event.target.value);
+              setSubmittedInspectionId("");
+            }}
             rows={7}
             placeholder="例如：三层东侧通道有建筑材料堵塞……"
             className="mt-2 w-full rounded-xl border border-slate-300 p-4 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"

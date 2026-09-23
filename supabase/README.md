@@ -45,6 +45,14 @@
 
 该 migration 已于 2026-09-23 先使用 `BEGIN ... ROLLBACK` 在真实项目完成无副作用测试，随后正式执行。复核确认 9 张业务表全部启用 RLS、5 条 Storage policy 存在，两个 Bucket 均为 private。
 
+`migrations/202609230003_submit_inspection_rpc.sql` 创建：
+
+- `submit_inspection_draft(uuid, jsonb)`：验证草稿所有权和 Storage 对象后，在单个事务中写入照片元数据、YOLO detections、已批准 findings 与证据，再将巡检改为 `SUBMITTED`
+- `abort_inspection_draft(uuid)`：仅允许创建者删除自己尚未提交的草稿，供上传失败后的补偿清理使用
+- 两个函数都采用 `SECURITY DEFINER`、固定空 `search_path`，仅向 `authenticated` 授予执行权
+
+该 migration 已于 2026-09-24 正式执行。复核查询确认两个函数均存在、`prosecdef = true`，且 `authenticated` 角色可以执行。
+
 ## 重要安全约束
 
 - 新注册用户始终创建为 `INSPECTOR`，不能通过注册 metadata 把自己提升为 Manager。
@@ -54,7 +62,9 @@
 - 后续 migration 应先在本地或分支数据库测试，再应用到生产项目。
 - `inspection-photos` 路径必须使用 `{projectId}/{inspectionId}/photos/...` 或 `{projectId}/{inspectionId}/follow-ups/...`。
 - `inspection-reports` 路径必须使用 `{projectId}/{inspectionId}/reports/...`。
-- 正式记录状态变化必须通过后续受控 RPC 或服务端事务实现，不要开放客户端直接修改状态字段。
+- 正式提交必须通过 `submit_inspection_draft` RPC，不要开放客户端直接修改 `status` 或 `submitted_at`。
+- 浏览器只负责直接上传私有照片；关系数据必须经过共享 Zod Schema 和服务端 RPC 验证。
+- 若照片上传或事务失败，必须先删除 Storage 对象，再调用 `abort_inspection_draft`，因为删除对象的 RLS 依赖仍然存在的草稿记录。
 
 ## 创建第一个 Manager
 

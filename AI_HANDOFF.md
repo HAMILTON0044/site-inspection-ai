@@ -1,6 +1,6 @@
 # Site Inspection AI — AI 协作交接文档
 
-最后更新：2026-09-23
+最后更新：2026-09-24
 
 本文档供项目组成员及后续 AI 编程助手使用。开始修改前，请先完整阅读本文档和根目录的 `AGENTS.md`。
 
@@ -17,6 +17,7 @@
 5. LLM 生成等待人工审核的巡检问题草稿。
 6. 巡检员可以新增、修改、删除、批准或驳回每一条问题。
 7. 完整巡检记录和照片可以保存到当前浏览器并在刷新后恢复。
+8. 人工审核完成后，可把照片、检测框、正式 findings 和证据关系提交到 Supabase 云端。
 
 原始照片不会发送给 LLM，也不依赖 LLM 网关的视觉能力。
 
@@ -40,8 +41,8 @@ Next.js /api/analyze
 Zod 校验后的巡检问题草稿
     ↓
 人工新增、修改、删除、批准或驳回
-    ↓
-浏览器 IndexedDB 本地巡检历史
+    ├─ 浏览器 IndexedDB 本地巡检历史/离线草稿
+    └─ Supabase 私有 Storage + PostgreSQL 正式记录
 ```
 
 技术栈：
@@ -153,7 +154,7 @@ Zod 校验后的巡检问题草稿
 - 已新增浏览器端与服务端 Supabase client 封装。
 - 首个数据库 migration 已在云端执行，创建 `profiles`、`projects`、`project_members`、角色枚举、Auth 用户 trigger 和 RLS policies。
 - 云端复核结果：`profiles` 2 条 policy、`projects` 3 条 policy、`project_members` 3 条 policy。
-- 目前尚未把登录界面和云端表接入现有巡检页面；IndexedDB 仍是当前可用的数据层。
+- 登录、项目读取和正式巡检提交已经接入现有页面；IndexedDB 继续作为本地草稿层。
 
 ### 3.9 登录、注册与访问保护
 
@@ -175,7 +176,20 @@ Zod 校验后的巡检问题草稿
 - 已创建私有 `inspection-photos` 和 `inspection-reports` Bucket，并用项目 UUID、巡检 UUID、对象所有者和巡检状态限制访问。
 - migration 先在真实 Supabase 使用事务回滚完成无副作用测试，再正式执行。
 - 云端复核确认：9 张表全部启用 RLS、业务表策略数量正确、5 条 Storage policy 存在，照片和报告 Bucket 均为 private。
-- 当前前端尚未调用这些表和 Bucket；IndexedDB 仍负责现有本地草稿。
+- IndexedDB 继续负责本地草稿；正式提交会使用这些表和 Bucket。
+
+### 3.11 受控云端正式提交
+
+- 页面新增“云端正式提交”区域，会读取当前账号可访问的 ACTIVE 项目。
+- 提交前必须逐条批准或驳回所有 finding；只有批准项进入正式记录，驳回项不会上传为 finding。
+- 浏览器直接把照片上传到私有 `inspection-photos` Bucket，避免经过 Vercel Function 的请求体大小限制。
+- 照片上传路径固定为 `{projectId}/{inspectionId}/photos/{photoUuid}.{ext}`，Storage RLS 会校验登录人、项目成员关系和草稿所有权。
+- 客户端为照片和 detection 生成 UUID，并保存原始文件名、尺寸、SHA-256、YOLO 类别、置信度、检测框和人工排除状态。
+- finding 证据会转成照片 UUID 和 detection UUID，不依赖易变的数组下标或文件名。
+- `submit_inspection_draft` RPC 在单个 PostgreSQL 事务中写入照片元数据、detections、findings、证据与审计事件，并把巡检从 `DRAFT` 改为 `SUBMITTED`。
+- RPC 会确认每个 Storage 对象真实存在且属于当前用户；任何数据库写入失败都会整体回滚。
+- 上传或事务失败时，客户端调用清理接口删除已上传照片并通过 `abort_inspection_draft` RPC 删除空草稿。
+- 客户端不能直接修改 `status` 或 `submitted_at`，两个受控 RPC 都会再次验证 `auth.uid()` 和草稿所有权。
 
 ## 4. 关键文件
 
@@ -189,8 +203,17 @@ src/components/finding-editor.tsx
 src/components/inspection-history.tsx
   本地巡检历史面板；负责保存、载入和二次确认删除的交互。
 
+src/components/cloud-submission.tsx
+  项目选择、审核计数、提交进度和云端巡检 ID 的界面。
+
 src/lib/inspection-store.ts
   IndexedDB 数据层；保存分析结果、审核状态、照片 Blob 和检测结果。
+
+src/lib/cloud-inspection.ts
+  浏览器端正式提交编排；计算尺寸与 SHA-256、直传私有 Storage、构建证据关系并在失败时清理。
+
+src/lib/cloud-inspection-schema.ts
+  云端草稿和正式提交载荷的共享 Zod Schema。
 
 docs/COLLABORATION_SYSTEM_DESIGN.md
   多人协作产品规则、权限矩阵、数据模型、状态机、页面与 API 设计。
@@ -203,6 +226,18 @@ supabase/migrations/202609230001_auth_projects.sql
 
 supabase/migrations/202609230002_inspections_findings_storage.sql
   巡检、finding 闭环、审计记录、私有照片和报告 Storage 的云端结构与 RLS；已在 Supabase 云端执行。
+
+supabase/migrations/202609230003_submit_inspection_rpc.sql
+  正式提交和失败清理 RPC；已在 Supabase 云端执行。
+
+src/app/api/projects/route.ts
+  返回当前账号通过 RLS 可访问的 ACTIVE 项目。
+
+src/app/api/inspections/drafts/route.ts
+  创建属于当前用户和项目的受保护云端草稿。
+
+src/app/api/inspections/[id]/route.ts
+  调用正式提交事务；DELETE 用于清理失败上传产生的 Storage 对象和草稿。
 
 src/lib/supabase/client.ts
   浏览器端 Supabase client；只使用公开的 Project URL 和 Publishable key。
@@ -340,6 +375,8 @@ git status --short
 - 第二个 migration 的 `BEGIN ... ROLLBACK` 无副作用测试成功，正式执行也返回成功。
 - 9 张新增业务表全部为 `rls=true`；策略数依次为 inspections 3、inspection_photos 3、vision_detections 4、findings 4、finding_evidence 3、finding_events 1、finding_follow_ups 2、follow_up_photos 2、generated_reports 2。
 - `inspection-photos` 和 `inspection-reports` Bucket 均为 private，限制分别为 10 MB 和 25 MB；5 条 Storage policy 已复核存在。
+- 第三个 migration 已正式执行，`submit_inspection_draft` 与 `abort_inspection_draft` 均已复核为 `SECURITY DEFINER`，且 `authenticated` 角色具有执行权。
+- 云端提交新增后，ESLint、TypeScript、`git diff --check` 和包含 3 个新 API 路由的 `npm run build` 全部通过。
 
 ## 8. 安全与真实性约束
 
@@ -366,7 +403,8 @@ git status --short
 - 尚未生成正式 PDF 或 Word 巡检报告。
 - 巡检历史目前只保存在当前浏览器的 IndexedDB 中，不支持跨浏览器、跨设备或团队同步。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
-- 云端业务表和私有 Bucket 已建立，但现有页面尚未实现“提交巡检”云端事务、正式记录读取或 Dashboard。
+- 云端正式提交已经实现，但尚未实现正式记录列表、跨设备载入或 finding Dashboard。
+- 当前没有测试账号和项目成员数据，因此本阶段只完成了 migration 实际部署、权限复核和生产构建；仍需用 Manager + Inspector 账号执行一次真实照片端到端验收。
 - 当前没有保留测试账号；Manager 提升和多角色权限隔离仍需后续重新创建测试账号验收。
 
 ## 10. 模型与许可证
@@ -417,13 +455,13 @@ git pull --ff-only origin main
 
 ## 12. 推荐的下一阶段
 
-优先完成“认证与项目权限基础”：
+优先完成“多角色权限和正式记录读取”：
 
 1. Supabase 项目、本地环境变量和 client 封装已经完成。
 2. User、Project、ProjectMember 数据结构和第一阶段 RLS 已经部署。
-3. 登录、注册、受保护路由和服务端权限校验已通过单账号验收；下一步验证 Manager 提升和多账号权限隔离。
+3. 登录、注册、受保护路由和服务端权限校验已通过单账号验收；正式提交 RPC 也已经部署。
 4. 保留 IndexedDB 作为未提交草稿层，不要直接删除当前本地历史能力。
-5. 使用两个 Inspector 和一个 Manager 验证项目权限隔离。
+5. 下一步使用两个 Inspector 和一个 Manager 验证项目权限隔离、正式提交、照片私有读取和失败清理。
 
 当前照片状态结构：
 
@@ -470,16 +508,15 @@ type SelectedPhoto = {
 
 建议顺序：
 
-1. 实现受控的“提交巡检”服务端事务，把本地已审核结果和照片同步到云端。
-2. 创建首个 Manager，并使用两个 Inspector 和一个 Manager 验证项目与巡检 RLS 隔离。
+1. 创建首个 Manager、项目和两个 Inspector 成员，端到端验收正式提交与 RLS 隔离。
+2. 实现云端正式巡检列表和详情页，并用签名 URL 显示私有证据照片。
 3. 验证退出、刷新 token、删除或禁用账号后的会话行为。
 4. 实现项目 finding Dashboard 和整改状态机。
 5. 生成带证据照片文件名和检测框快照的 PDF 或 Word 报告。
 6. 使用现场照片评估置信度阈值和误检率。
 7. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
 8. 训练许可证清晰的自有模型。
-9. 停止开发服务器后执行完整 `npm run build`。
-10. 部署后检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
+9. 部署后检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
 
 ## 14. 给后续 AI 的工作要求
 
