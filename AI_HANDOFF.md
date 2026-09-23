@@ -145,6 +145,16 @@ Zod 校验后的巡检问题草稿
 - 历史记录删除采用“删除 → 确认删除/取消”两步操作；删除历史不会清空当前页面内容。
 - 当前实现是单浏览器本地存储，不会在不同设备或浏览器之间同步。
 
+### 3.8 Supabase 云端基础
+
+- 已创建 Supabase 项目 `site-inspection-ai`，区域为 Singapore，项目状态为 Healthy。
+- 已配置本地 `NEXT_PUBLIC_SUPABASE_URL` 和 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`；`.env.local` 不提交 Git。
+- 已安装 `@supabase/supabase-js` 和 `@supabase/ssr`。
+- 已新增浏览器端与服务端 Supabase client 封装。
+- 首个数据库 migration 已在云端执行，创建 `profiles`、`projects`、`project_members`、角色枚举、Auth 用户 trigger 和 RLS policies。
+- 云端复核结果：`profiles` 2 条 policy、`projects` 3 条 policy、`project_members` 3 条 policy。
+- 目前尚未把登录界面和云端表接入现有巡检页面；IndexedDB 仍是当前可用的数据层。
+
 ## 4. 关键文件
 
 ```text
@@ -167,7 +177,13 @@ docs/ADR-001-CLOUD-STACK.md
   Supabase Auth、PostgreSQL、Private Storage 和 IndexedDB 的技术选型。
 
 supabase/migrations/202609230001_auth_projects.sql
-  第一阶段 profiles、projects、project_members 表和 RLS 草案；尚未连接云端执行。
+  第一阶段 profiles、projects、project_members 表和 RLS；已在 Supabase 云端执行。
+
+src/lib/supabase/client.ts
+  浏览器端 Supabase client；只使用公开的 Project URL 和 Publishable key。
+
+src/lib/supabase/server.ts
+  Next.js 服务端 Supabase client；通过 cookies 共享登录会话。
 
 src/lib/vision.ts
   浏览器端动态加载 ONNX Runtime、图片 letterbox 预处理、YOLO 输出解析、坐标还原和 NMS。
@@ -219,6 +235,8 @@ http://localhost:3000
 LLM_GATEWAY_URL=
 LLM_GATEWAY_API_KEY=
 LLM_MODEL=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ```
 
 不要把 `.env.local`、API Key、OIDC Token 或其他凭证提交到 Git。
@@ -267,6 +285,9 @@ git status --short
 - 使用 `next start` 启动生产版本后，`image1.jpeg` 成功识别出 3 项，浏览器控制台无错误。
 - ESLint、TypeScript 和 `git diff --check` 已通过。
 - npm 安全审计为 0 个漏洞。
+- Supabase 项目创建成功且状态为 Healthy，主数据库位于 Singapore。
+- 首个云端 migration 执行成功；复核查询返回 `profiles`、`projects`、`project_members` 及 2、3、3 条 RLS policies。
+- Supabase client 新增后，ESLint 与 TypeScript 严格类型检查通过。
 
 ## 8. 安全与真实性约束
 
@@ -293,7 +314,7 @@ git status --short
 - 尚未生成正式 PDF 或 Word 巡检报告。
 - 巡检历史目前只保存在当前浏览器的 IndexedDB 中，不支持跨浏览器、跨设备或团队同步。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
-- 尚未建立数据库或巡检历史记录。
+- 云端目前只有认证与项目权限基础表，尚未建立巡检记录、finding、整改事件和报告表。
 
 ## 10. 模型与许可证
 
@@ -345,9 +366,9 @@ git pull --ff-only origin main
 
 优先完成“认证与项目权限基础”：
 
-1. 按 `docs/ADR-001-CLOUD-STACK.md` 创建 Supabase 项目并配置本地环境变量。
-2. 建立 User、Project、ProjectMember 数据结构和 RLS。
-3. 完成登录、退出、受保护路由和服务端权限校验。
+1. Supabase 项目、本地环境变量和 client 封装已经完成。
+2. User、Project、ProjectMember 数据结构和第一阶段 RLS 已经部署。
+3. 下一步完成登录、退出、受保护路由和服务端权限校验。
 4. 保留 IndexedDB 作为未提交草稿层，不要直接删除当前本地历史能力。
 5. 使用两个 Inspector 和一个 Manager 验证项目权限隔离。
 
@@ -396,16 +417,16 @@ type SelectedPhoto = {
 
 建议顺序：
 
-1. 创建并连接 Supabase 项目。
-2. 实现账号登录与项目成员权限。
+1. 实现账号登录、退出和受保护路由。
+2. 创建首个 Manager，并使用两个 Inspector 和一个 Manager 验证项目权限。
 3. 把正式提交的巡检同步到云端，IndexedDB 继续保存本地草稿。
 4. 实现项目 finding Dashboard 和整改状态机。
 5. 生成带证据照片文件名和检测框快照的 PDF 或 Word 报告。
-4. 使用现场照片评估置信度阈值和误检率。
-5. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
-6. 训练许可证清晰的自有模型。
-7. 停止开发服务器后执行完整 `npm run build`。
-8. 部署后检查 ONNX 模型、WASM 资源和网关环境变量。
+6. 使用现场照片评估置信度阈值和误检率。
+7. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
+8. 训练许可证清晰的自有模型。
+9. 停止开发服务器后执行完整 `npm run build`。
+10. 部署后检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
 
 ## 14. 给后续 AI 的工作要求
 
