@@ -9,6 +9,10 @@ import {
 } from "react";
 import type { InspectionAnalysis } from "@/lib/schemas";
 import {
+  FindingEditor,
+  type FindingEditorValue,
+} from "@/components/finding-editor";
+import {
   detectPpe,
   type PpeLabel,
   type VisionDetection,
@@ -79,14 +83,32 @@ const ppeLabels: Record<PpeLabel, string> = {
 const EMPTY_DETECTIONS: VisionDetection[] = [];
 const EMPTY_EXCLUDED_INDEXES: number[] = [];
 
+const EMPTY_FINDING: FindingEditorValue = {
+  category: "BLOCKED_ACCESS",
+  title: "",
+  description: "",
+  visible_evidence: "",
+  evidence_photos: [],
+  risk_level: "UNCONFIRMED",
+  corrective_action: "",
+  uncertainty: [],
+};
+
 export default function Home() {
   const [note, setNote] = useState(
     "三层东侧通道有建筑材料堵塞，旁边的电缆没有固定。",
   );
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [reviewDecisions, setReviewDecisions] = useState<
-    Record<number, ReviewDecision>
+    Record<string, ReviewDecision>
   >({});
+  const [editingFindingId, setEditingFindingId] = useState<string | null>(
+    null,
+  );
+  const [isAddingFinding, setIsAddingFinding] = useState(false);
+  const [pendingDeleteFindingId, setPendingDeleteFindingId] = useState<
+    string | null
+  >(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
@@ -112,6 +134,12 @@ export default function Home() {
     detecting &&
     batchProgress !== null &&
     batchProgress.currentPhotoName.length > 0;
+
+  function closeFindingEditor() {
+    setEditingFindingId(null);
+    setIsAddingFinding(false);
+    setPendingDeleteFindingId(null);
+  }
 
   function updatePhoto(
     photoId: string,
@@ -249,6 +277,7 @@ export default function Home() {
     setError("");
     setResult(null);
     setReviewDecisions({});
+    closeFindingEditor();
   }
 
   function selectPhoto(photoId: string) {
@@ -257,8 +286,6 @@ export default function Home() {
     }
 
     setActivePhotoId(photoId);
-    setResult(null);
-    setReviewDecisions({});
   }
 
   async function runPhotoDetection(photo: SelectedPhoto) {
@@ -303,6 +330,9 @@ export default function Home() {
 
     setError("");
     setBatchProgress(null);
+    setResult(null);
+    setReviewDecisions({});
+    closeFindingEditor();
     setDetecting(true);
 
     try {
@@ -377,6 +407,7 @@ export default function Home() {
     setError("");
     setResult(null);
     setReviewDecisions({});
+    closeFindingEditor();
     setDetecting(true);
 
     try {
@@ -393,6 +424,7 @@ export default function Home() {
     setError("");
     setResult(null);
     setReviewDecisions({});
+    closeFindingEditor();
 
     try {
       if (
@@ -468,13 +500,90 @@ export default function Home() {
   }
 
   function updateReviewDecision(
-    findingIndex: number,
+    findingId: string,
     decision: ReviewDecision,
   ) {
     setReviewDecisions((currentDecisions) => ({
       ...currentDecisions,
-      [findingIndex]: decision,
+      [findingId]: decision,
     }));
+  }
+
+  function resetFindingDecision(findingId: string) {
+    setReviewDecisions((currentDecisions) => {
+      const nextDecisions = { ...currentDecisions };
+      delete nextDecisions[findingId];
+      return nextDecisions;
+    });
+  }
+
+  function addFinding(value: FindingEditorValue) {
+    const finding: Finding = {
+      ...value,
+      id: crypto.randomUUID(),
+      origin: "HUMAN",
+      modified_by_human: true,
+      status: "HUMAN_DRAFT",
+      requires_human_review: true,
+    };
+
+    setResult((currentResult) =>
+      currentResult === null
+        ? currentResult
+        : {
+            ...currentResult,
+            analysis: {
+              ...currentResult.analysis,
+              findings: [...currentResult.analysis.findings, finding],
+            },
+          },
+    );
+    closeFindingEditor();
+  }
+
+  function updateFinding(
+    findingId: string,
+    value: FindingEditorValue,
+  ) {
+    setResult((currentResult) =>
+      currentResult === null
+        ? currentResult
+        : {
+            ...currentResult,
+            analysis: {
+              ...currentResult.analysis,
+              findings: currentResult.analysis.findings.map((finding) =>
+                finding.id === findingId
+                  ? {
+                      ...finding,
+                      ...value,
+                      modified_by_human: true,
+                    }
+                  : finding,
+              ),
+            },
+          },
+    );
+    resetFindingDecision(findingId);
+    closeFindingEditor();
+  }
+
+  function deleteFinding(findingId: string) {
+    setResult((currentResult) =>
+      currentResult === null
+        ? currentResult
+        : {
+            ...currentResult,
+            analysis: {
+              ...currentResult.analysis,
+              findings: currentResult.analysis.findings.filter(
+                (finding) => finding.id !== findingId,
+              ),
+            },
+          },
+    );
+    resetFindingDecision(findingId);
+    closeFindingEditor();
   }
 
   function toggleDetectionInclusion(detectionIndex: number) {
@@ -782,15 +891,63 @@ export default function Home() {
               </p>
             </div>
 
-            {result.analysis.findings.length === 0 ? (
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-600">
+                共 {result.analysis.findings.length} 条问题记录
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingFinding(true);
+                  setEditingFindingId(null);
+                  setPendingDeleteFindingId(null);
+                }}
+                disabled={isAddingFinding}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                + 人工新增问题
+              </button>
+            </div>
+
+            {isAddingFinding && (
+              <div className="mt-5">
+                <h3 className="mb-3 font-semibold text-slate-900">
+                  新增人工 finding
+                </h3>
+                <FindingEditor
+                  key="new-finding"
+                  initialValue={EMPTY_FINDING}
+                  photoNames={photos.map((photo) => photo.file.name)}
+                  submitLabel="保存新增问题"
+                  onSave={addFinding}
+                  onCancel={closeFindingEditor}
+                />
+              </div>
+            )}
+
+            {result.analysis.findings.length === 0 && !isAddingFinding ? (
               <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-800">
-                当前备注中没有识别到系统支持的问题。
+                AI 当前没有识别到系统支持的问题；如现场存在其他问题，可点击“人工新增问题”。
               </div>
             ) : (
               <div className="mt-5 space-y-5">
-                {result.analysis.findings.map((finding, index) => (
+                {result.analysis.findings.map((finding, index) =>
+                  editingFindingId === finding.id ? (
+                    <div key={finding.id}>
+                      <h3 className="mb-3 font-semibold text-slate-900">
+                        编辑问题 {index + 1}
+                      </h3>
+                      <FindingEditor
+                        initialValue={finding}
+                        photoNames={photos.map((photo) => photo.file.name)}
+                        submitLabel="保存修改"
+                        onSave={(value) => updateFinding(finding.id, value)}
+                        onCancel={closeFindingEditor}
+                      />
+                    </div>
+                  ) : (
                   <article
-                    key={`${finding.category}-${index}`}
+                    key={finding.id}
                     className="rounded-xl border border-slate-200 p-5 shadow-sm"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -802,6 +959,19 @@ export default function Home() {
                         <h3 className="mt-1 text-lg font-bold text-slate-900">
                           {finding.title}
                         </h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+                            {finding.origin === "HUMAN"
+                              ? "人工新增"
+                              : "AI 生成"}
+                          </span>
+                          {finding.modified_by_human &&
+                            finding.origin === "AI" && (
+                              <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-700">
+                                已人工修改
+                              </span>
+                            )}
+                        </div>
                       </div>
 
                       <span
@@ -885,24 +1055,66 @@ export default function Home() {
                     <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
                       <p className="text-sm font-medium text-slate-600">
                         审核状态：
-                        {reviewDecisions[index] === "APPROVED"
+                        {reviewDecisions[finding.id] === "APPROVED"
                           ? "已批准"
-                          : reviewDecisions[index] === "REJECTED"
+                          : reviewDecisions[finding.id] === "REJECTED"
                             ? "已驳回"
                             : "等待审核"}
                       </p>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {pendingDeleteFindingId === finding.id ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setPendingDeleteFindingId(null)}
+                              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              取消删除
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteFinding(finding.id)}
+                              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                            >
+                              确认删除
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPendingDeleteFindingId(finding.id);
+                                setEditingFindingId(null);
+                              }}
+                              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              删除
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingFindingId(finding.id);
+                                setIsAddingFinding(false);
+                                setPendingDeleteFindingId(null);
+                              }}
+                              className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+                            >
+                              编辑
+                            </button>
+                          </>
+                        )}
                         <button
                           type="button"
                           onClick={() =>
                             updateReviewDecision(
-                              index,
+                              finding.id,
                               "REJECTED",
                             )
                           }
                           className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                            reviewDecisions[index] === "REJECTED"
+                            reviewDecisions[finding.id] === "REJECTED"
                               ? "border-red-600 bg-red-600 text-white"
                               : "border-red-200 text-red-700 hover:bg-red-50"
                           }`}
@@ -914,12 +1126,12 @@ export default function Home() {
                           type="button"
                           onClick={() =>
                             updateReviewDecision(
-                              index,
+                              finding.id,
                               "APPROVED",
                             )
                           }
                           className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-                            reviewDecisions[index] === "APPROVED"
+                            reviewDecisions[finding.id] === "APPROVED"
                               ? "border-emerald-600 bg-emerald-600 text-white"
                               : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                           }`}
@@ -929,7 +1141,8 @@ export default function Home() {
                       </div>
                     </div>
                   </article>
-                ))}
+                  ),
+                )}
               </div>
             )}
           </section>

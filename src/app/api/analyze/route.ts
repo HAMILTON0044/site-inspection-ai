@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { callLlm } from "@/lib/llm";
-import { InspectionAnalysisSchema } from "@/lib/schemas";
+import {
+  InspectionAnalysisDraftSchema,
+  InspectionAnalysisSchema,
+} from "@/lib/schemas";
 
 export const runtime = "nodejs";
 
@@ -203,7 +206,7 @@ ${JSON.stringify(parsedRequest.data.photoEvidence, null, 2)}
     }
 
     const parsedAnalysis =
-      InspectionAnalysisSchema.safeParse(jsonOutput);
+      InspectionAnalysisDraftSchema.safeParse(jsonOutput);
 
     if (!parsedAnalysis.success) {
       return Response.json(
@@ -239,10 +242,20 @@ ${JSON.stringify(parsedRequest.data.photoEvidence, null, 2)}
       );
     }
 
+    const analysis = InspectionAnalysisSchema.parse({
+      ...parsedAnalysis.data,
+      findings: parsedAnalysis.data.findings.map((finding) => ({
+        ...finding,
+        id: crypto.randomUUID(),
+        origin: "AI" as const,
+        modified_by_human: false,
+      })),
+    });
+
     return new Response(
         JSON.stringify(
         {
-            analysis: parsedAnalysis.data,
+            analysis,
             reviewed: false,
         },
         null,

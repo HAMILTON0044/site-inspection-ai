@@ -15,7 +15,7 @@ export const RiskLevelSchema = z.enum([
   "UNCONFIRMED",
 ]);
 
-export const FindingSchema = z.object({
+export const FindingDraftSchema = z.object({
   category: FindingCategorySchema,
   title: z.string().min(1),
   description: z.string().min(1),
@@ -26,6 +26,19 @@ export const FindingSchema = z.object({
   uncertainty: z.array(z.string()),
   status: z.literal("AI_DRAFT"),
   requires_human_review: z.literal(true),
+});
+
+export const FindingSchema = FindingDraftSchema.extend({
+  id: z.uuid(),
+  origin: z.enum(["AI", "HUMAN"]),
+  modified_by_human: z.boolean(),
+  status: z.enum(["AI_DRAFT", "HUMAN_DRAFT"]),
+});
+
+export const InspectionAnalysisDraftSchema = z.object({
+  location: z.string().min(1),
+  summary: z.string().min(1),
+  findings: z.array(FindingDraftSchema),
 });
 
 export const InspectionAnalysisSchema = z.object({
