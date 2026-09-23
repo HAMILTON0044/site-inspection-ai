@@ -23,6 +23,8 @@
 - `projects`：3 条 RLS policy
 - `project_members`：3 条 RLS policy
 
+认证链路已用真实测试账号验证：注册后 trigger 正确生成 `INSPECTOR` profile；删除 Auth 用户后 profile 通过外键级联删除。测试账号已清理，项目当前不保留测试用户。
+
 ## 重要安全约束
 
 - 新注册用户始终创建为 `INSPECTOR`，不能通过注册 metadata 把自己提升为 Manager。

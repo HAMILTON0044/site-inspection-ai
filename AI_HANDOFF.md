@@ -162,7 +162,7 @@ Zod 校验后的巡检问题草稿
 - Next.js 16 `proxy.ts` 会刷新 Supabase 会话；未登录访问 `/` 会重定向到 `/login`，已登录访问 `/login` 会返回工作台。
 - 根布局在已登录时显示当前用户、角色和退出按钮。
 - `/api/analyze` 在服务端独立调用 `getClaims()` 校验身份，匿名请求返回 `401`，不只依赖页面跳转。
-- 已验证匿名重定向和 API 401；真实邮箱注册、邮件验证、登录和退出仍需使用测试账号完成端到端验收。
+- 已使用真实测试账号验证注册、邮件确认、登录、profile trigger 和默认 Inspector 角色；验收结束后已删除测试账号及其关联 profile。
 
 ## 4. 关键文件
 
@@ -318,6 +318,9 @@ git status --short
 - 匿名访问 `/` 会跳转到 `/login`，登录与注册表单可见。
 - 匿名 POST `/api/analyze` 返回 HTTP 401。
 - 认证页面、Proxy 和 API 权限校验新增后，ESLint、TypeScript 与 `git diff --check` 通过。
+- 真实测试账号完成注册、邮箱确认和登录；`profiles` 自动生成且角色为 `INSPECTOR`、`is_active = true`。
+- 删除 Supabase Auth 测试账号后，用户列表为空，对应 `profiles` 记录由外键级联删除，复核数量为 0。
+- 停止开发服务器后，包含 `/`、`/login`、`/api/analyze` 和 Proxy 的正式 `npm run build` 已通过；开发服务器随后已恢复。
 
 ## 8. 安全与真实性约束
 
@@ -345,7 +348,7 @@ git status --short
 - 巡检历史目前只保存在当前浏览器的 IndexedDB 中，不支持跨浏览器、跨设备或团队同步。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
 - 云端目前只有认证与项目权限基础表，尚未建立巡检记录、finding、整改事件和报告表。
-- 尚未使用真实邮箱完成注册、邮件验证、登录、退出和 Manager 角色端到端验收。
+- 当前没有保留测试账号；Manager 提升和多角色权限隔离仍需后续重新创建测试账号验收。
 
 ## 10. 模型与许可证
 
@@ -399,7 +402,7 @@ git pull --ff-only origin main
 
 1. Supabase 项目、本地环境变量和 client 封装已经完成。
 2. User、Project、ProjectMember 数据结构和第一阶段 RLS 已经部署。
-3. 登录、注册、退出、受保护路由和服务端权限校验代码已经完成；下一步使用真实测试账号端到端验收。
+3. 登录、注册、受保护路由和服务端权限校验已通过单账号验收；下一步验证 Manager 提升和多账号权限隔离。
 4. 保留 IndexedDB 作为未提交草稿层，不要直接删除当前本地历史能力。
 5. 使用两个 Inspector 和一个 Manager 验证项目权限隔离。
 
@@ -448,8 +451,8 @@ type SelectedPhoto = {
 
 建议顺序：
 
-1. 使用真实邮箱验证注册、登录、退出和 session 刷新。
-2. 创建首个 Manager，并使用两个 Inspector 和一个 Manager 验证项目权限。
+1. 创建首个 Manager，并使用两个 Inspector 和一个 Manager 验证项目权限。
+2. 验证退出、刷新 token、删除或禁用账号后的会话行为。
 3. 把正式提交的巡检同步到云端，IndexedDB 继续保存本地草稿。
 4. 实现项目 finding Dashboard 和整改状态机。
 5. 生成带证据照片文件名和检测框快照的 PDF 或 Word 报告。
