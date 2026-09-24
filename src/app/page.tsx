@@ -115,9 +115,7 @@ const EMPTY_FINDING: FindingEditorValue = {
 };
 
 export default function Home() {
-  const [note, setNote] = useState(
-    "三层东侧通道有建筑材料堵塞，旁边的电缆没有固定。",
-  );
+  const [note, setNote] = useState("");
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [reviewDecisions, setReviewDecisions] = useState<
     Record<string, ReviewDecision>
@@ -1328,8 +1326,8 @@ export default function Home() {
               setSubmittedInspectionId("");
             }}
             rows={7}
-            placeholder="例如：三层东侧通道有建筑材料堵塞……"
-            className="mt-2 w-full rounded-xl border border-slate-300 p-4 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            placeholder="请输入巡检备注"
+            className="mt-2 w-full rounded-xl border border-slate-300 p-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           />
 
           <button
