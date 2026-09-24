@@ -1,6 +1,6 @@
 # Site Inspection AI — AI 协作交接文档
 
-最后更新：2026-09-24
+最后更新：2026-09-25
 
 本文档供项目组成员及后续 AI 编程助手使用。开始修改前，请先完整阅读本文档和根目录的 `AGENTS.md`。
 
@@ -20,6 +20,7 @@
 6. 巡检员可以新增、修改、删除、批准或驳回每一条问题。
 7. 完整巡检记录和照片可以保存到当前浏览器并在刷新后恢复。
 8. 人工审核完成后，可把照片、检测框、正式 findings 和证据关系提交到 Supabase 云端。
+9. 人工审核完成后，可在浏览器直接生成带证据照片和检测框的正式 PDF 巡检报告。
 
 原始照片不会发送给 LLM，也不依赖 LLM 网关的视觉能力。
 
@@ -44,7 +45,8 @@ Zod 校验后的巡检问题草稿
     ↓
 人工新增、修改、删除、批准或驳回
     ├─ 浏览器 IndexedDB 本地巡检历史/离线草稿
-    └─ Supabase 私有 Storage + PostgreSQL 正式记录
+    ├─ Supabase 私有 Storage + PostgreSQL 正式记录
+    └─ React PDF 浏览器端正式报告
 ```
 
 技术栈：
@@ -56,6 +58,7 @@ Zod 校验后的巡检问题草稿
 - Zod 4
 - ONNX Runtime Web 1.30
 - YOLOv8n 施工 PPE 模型
+- React PDF 4.9（浏览器端 A4 报告）
 
 ## 3. 已完成功能
 
@@ -193,17 +196,29 @@ Zod 校验后的巡检问题草稿
 - 上传或事务失败时，客户端调用清理接口删除已上传照片并通过 `abort_inspection_draft` RPC 删除空草稿。
 - 客户端不能直接修改 `status` 或 `submitted_at`，两个受控 RPC 都会再次验证 `auth.uid()` 和草稿所有权。
 
-### 3.9 企业级前端第一阶段
+### 3.12 企业级前端第一阶段
 
 - 登录页改为深色品牌说明区 + 浅色登录表单的双栏布局，小屏自动收敛为单栏。
 - 主巡检页加入深色侧边导航、顶部上下文栏、系统状态和三阶段巡检进度。
 - 工作区最大宽度提升到 1440px，适配常见笔记本和大屏演示，不再使用狭窄测试卡片。
 - 现有 YOLO、LLM、人工审核、IndexedDB 和 Supabase 提交逻辑未重写，只调整信息层级和展示容器。
-- 尚未实现的问题看板、报告和团队管理在导航中明确标记为“即将推出”，不会伪装成可用功能。
+- 尚未实现的问题看板、独立报告中心和团队管理在导航中明确标记为“即将推出”，不会伪装成可用功能。
 - 设计参考只用于布局和信息架构，没有复制第三方项目代码：
   - 通用后台布局：<https://github.com/arhamkhnz/next-shadcn-admin-dashboard>
   - 施工管理信息架构：<https://github.com/KaguSoftware/ConstructionOS>
   - 施工 ERP 页面地图：<https://github.com/asimsandhu/construction-erp-dashboard>
+
+### 3.13 正式 PDF 巡检报告
+
+- 全部 finding 必须先批准或驳回，下载按钮才会启用。
+- 报告只收录人工批准的 finding；驳回项只计入封面汇总，不进入问题正文。
+- PDF 在浏览器本地生成，不会把报告内容或照片发送到新的第三方服务。
+- 报告包含编号、项目、巡检位置、巡检员、生成时间、审核状态、AI 摘要、原始备注和人工审核统计。
+- 每条批准问题独占一页，显示类别、风险、描述、可见证据、证据来源、整改措施和仍需确认事项。
+- 每张证据照片独占一页；导出前会把未排除的 YOLO 检测框、中文标签和置信度绘制到照片上。
+- 末页包含巡检员和 Manager 的签名/日期区域，以及 AI 辅助生成免责声明。
+- 使用本地 Noto Sans SC 字体，中文可以嵌入 PDF；字体许可证保存在 `public/fonts/OFL.txt`。
+- 已通过真实 IndexedDB 巡检记录完成浏览器下载，并使用 Poppler 渲染检查全部页面。
 
 ## 4. 关键文件
 
@@ -225,6 +240,12 @@ src/components/inspection-history.tsx
 
 src/components/cloud-submission.tsx
   项目选择、审核计数、提交进度和云端巡检 ID 的界面。
+
+src/components/report-download.tsx
+  报告下载入口；读取审核结果、把 YOLO 框绘制到照片、组装报告数据并在浏览器生成 PDF。
+
+src/components/inspection-report-document.tsx
+  A4 正式报告模板；负责封面、问题页、证据照片页、签字区、中文字体和页眉页脚。
 
 src/lib/inspection-store.ts
   IndexedDB 数据层；保存分析结果、审核状态、照片 Blob 和检测结果。
@@ -397,6 +418,7 @@ git status --short
 - `inspection-photos` 和 `inspection-reports` Bucket 均为 private，限制分别为 10 MB 和 25 MB；5 条 Storage policy 已复核存在。
 - 第三个 migration 已正式执行，`submit_inspection_draft` 与 `abort_inspection_draft` 均已复核为 `SECURITY DEFINER`，且 `authenticated` 角色具有执行权。
 - 云端提交新增后，ESLint、TypeScript、`git diff --check` 和包含 3 个新 API 路由的 `npm run build` 全部通过。
+- 正式 PDF 功能新增后，ESLint、TypeScript 和 `npm run build` 通过；浏览器真实下载生成 3 页 A4 报告，中文、人工审核结果、YOLO 检测框、页眉页脚与签字区均经 Poppler 渲染检查。
 
 ## 8. 安全与真实性约束
 
@@ -420,7 +442,7 @@ git status --short
 - 普通帽子可能被误认为安全帽。
 - 小目标、遮挡、逆光、夜间和模糊图片可能降低准确率。
 - LLM 只接收按照片分组的检测 JSON，仍然看不到原始图片。
-- 尚未生成正式 PDF 或 Word 巡检报告。
+- 已支持浏览器端正式 PDF；Word 报告和已生成报告的云端归档尚未实现。
 - 巡检历史目前只保存在当前浏览器的 IndexedDB 中，不支持跨浏览器、跨设备或团队同步。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
 - 云端正式提交已经实现，但尚未实现正式记录列表、跨设备载入或 finding Dashboard。
@@ -532,11 +554,12 @@ type SelectedPhoto = {
 2. 实现云端正式巡检列表和详情页，并用签名 URL 显示私有证据照片。
 3. 验证退出、刷新 token、删除或禁用账号后的会话行为。
 4. 实现项目 finding Dashboard 和整改状态机。
-5. 生成带证据照片文件名和检测框快照的 PDF 或 Word 报告。
-6. 使用现场照片评估置信度阈值和误检率。
-7. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
-8. 训练许可证清晰的自有模型。
-9. 部署后检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
+5. 把浏览器生成的 PDF 上传到私有 `inspection-reports` Bucket，并在 `generated_reports` 记录版本和对象路径。
+6. 如黑客松演示确有需要，再补充 Word 导出。
+7. 使用现场照片评估置信度阈值和误检率。
+8. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
+9. 训练许可证清晰的自有模型。
+10. 部署后检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
 
 ## 14. 给后续 AI 的工作要求
 

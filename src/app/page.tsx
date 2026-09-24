@@ -15,6 +15,7 @@ import {
 import { CloudSubmission } from "@/components/cloud-submission";
 import { InspectionHistory } from "@/components/inspection-history";
 import { ProductShell } from "@/components/product-shell";
+import { ReportDownload } from "@/components/report-download";
 import {
   loadCloudProjects,
   submitInspectionToCloud,
@@ -1366,6 +1367,27 @@ export default function Home() {
             <p className="mt-2 text-sm text-slate-600">
               以下内容由 AI 生成，不能直接作为最终安全结论。
             </p>
+
+            <div className="mt-5 flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-slate-900">正式巡检报告</p>
+                <p className="mt-1 text-sm leading-5 text-slate-600">
+                  报告只收录人工批准的问题，并附上巡检备注、证据照片和自动检测框。
+                </p>
+              </div>
+              <ReportDownload
+                note={note}
+                analysis={result.analysis}
+                reviewDecisions={reviewDecisions}
+                photos={photos}
+                projectName={
+                  cloudProjects.find(
+                    (project) => project.id === selectedProjectId,
+                  )?.name ?? ""
+                }
+                disabled={findingReviewCounts.PENDING > 0}
+              />
+            </div>
 
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-5">
               <p className="text-sm font-medium text-slate-500">

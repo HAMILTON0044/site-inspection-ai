@@ -1,11 +1,12 @@
 # Site Inspection AI — 团队正式交接说明
 
-最后更新：2026-09-24  
+最后更新：2026-09-25
+
 当前分支：`main`  
 远程仓库：<https://github.com/HAMILTON0044/site-inspection-ai>  
 交接基线：以 `origin/main` 最新提交为准（`6cb63d3` 之后已加入企业级前端第一阶段）
 
-> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 本地草稿保存 → Supabase 私有云端正式提交”的基础闭环，下一阶段重点是多角色真实验收、正式记录 Dashboard 和报告生成。
+> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 本地/云端保存 → 正式 PDF 报告”的基础闭环，下一阶段重点是多角色真实验收、正式记录 Dashboard 和报告云端归档。
 
 ## 1. 交接时项目处于什么阶段
 
@@ -21,13 +22,14 @@
 8. 未提交内容可以保存到 IndexedDB，刷新后继续处理。
 9. 审核完成后，照片进入 Supabase 私有 Storage，正式数据通过数据库事务写入 PostgreSQL。
 10. 登录页和巡检工作台已完成第一阶段企业视觉改造：统一品牌、侧边导航、顶部状态栏、三步巡检进度和宽屏工作区。
+11. 全部 finding 完成人工审核后，可下载带证据照片和 YOLO 检测框的正式 A4 PDF 报告。
 
 仍未完成的主要部分：
 
 - Manager/Inspector 多账号真实权限验收。
 - 云端正式巡检列表与详情页。
 - 项目 finding Dashboard 和整改闭环界面。
-- PDF/Word 正式报告。
+- Word 报告和 PDF 云端归档（浏览器端正式 PDF 已完成）。
 - Vercel 正式部署后的整体验收。
 
 ## 2. 产品要解决的问题
@@ -91,6 +93,7 @@ finding 草稿
 - Supabase Private Storage
 - 浏览器 IndexedDB
 - 黑客松指定 LLM Gateway
+- React PDF 4.9
 
 ## 5. 已完成功能
 
@@ -176,6 +179,17 @@ finding 草稿
 - 任何关系数据失败都会整体回滚。
 - 上传或事务失败时会删除已上传对象，并调用 `abort_inspection_draft` 清理草稿。
 - 浏览器客户端没有权限直接修改正式状态或 `submitted_at`。
+
+### 5.7 正式 PDF 报告
+
+- 所有 finding 必须先批准或驳回；还有待审核项时下载按钮不可用。
+- 报告只收录人工批准项，驳回项仅进入封面统计。
+- PDF 在浏览器本地生成，不额外上传照片或内容。
+- 封面包含报告编号、项目、位置、巡检员、时间、摘要、原始备注和审核统计。
+- 每条批准问题独占一页，每张照片独占一页，避免分页把内容拆开。
+- 照片页会把未被人工排除的 YOLO 框、中文标签和置信度绘制进最终图片。
+- 末页包含巡检员/Manager 签名区和 AI 辅助生成免责声明。
+- 中文字体随项目提供，许可证见 `public/fonts/OFL.txt`。
 
 ## 6. Supabase 当前状态
 
@@ -282,6 +296,12 @@ src/lib/inspection-store.ts
 src/components/cloud-submission.tsx
   云端项目选择、审核计数、提交进度和结果提示。
 
+src/components/report-download.tsx
+  浏览器端正式 PDF 下载、证据图检测框绘制和报告数据组装。
+
+src/components/inspection-report-document.tsx
+  A4 PDF 模板、中文字体、问题页、证据页、页眉页脚和签字区。
+
 src/lib/cloud-inspection.ts
   图片哈希、直传 Storage、载荷构造、正式提交和失败清理。
 
@@ -356,8 +376,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 8. 人工修改一条 finding，展示审核状态被重置。
 9. 批准有效 finding、驳回无效 finding。
 10. 保存一次本地历史。
-11. 选择项目并提交云端。
-12. 后续在 Dashboard 中查看正式记录；此页面尚待实现。
+11. 点击“下载正式 PDF 报告”，展示问题页和带检测框的证据照片页。
+12. 选择项目并提交云端。
+13. 后续在 Dashboard 中查看正式记录；此页面尚待实现。
 
 ## 11. 已完成的验证
 
@@ -378,6 +399,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 - 两个 Storage Bucket 都是 private。
 - 正式提交和失败清理 RPC 已在系统表中验证存在和权限。
 - 多照片识别、误检排除、LLM 证据分组、finding 编辑、证据高亮和本地历史恢复均做过浏览器端验收。
+- 正式 PDF 已使用真实本地巡检记录完成浏览器下载；3 页 A4 报告经 Poppler 渲染确认中文、检测框、页眉页脚和签字区无溢出。
 
 ## 12. 当前已知限制
 
@@ -386,7 +408,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 - 尚无云端正式记录列表和详情页。
 - 尚无项目 finding Dashboard。
 - 尚未实现 finding 指派、处理中、待复核、关闭和重开的服务端 RPC。
-- 尚未生成 PDF/Word 报告。
+- 浏览器端 PDF 已完成，但尚未上传到私有 `inspection-reports` Bucket，也未写入 `generated_reports`；Word 尚未实现。
 - LLM 看不到原图，只能使用检测 JSON 和文字备注。
 - 当前 YOLO 模型主要识别 PPE，不能可靠判断通道堵塞、电缆布置或材料堆放关系。
 - 模型和训练数据许可证适合黑客松原型；商业发布前必须重新审查。
@@ -438,7 +460,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 3. finding Dashboard。
 4. finding 状态转换 RPC 和审计事件。
 5. 跟进评论与整改照片。
-6. PDF/Word 报告。
+6. PDF 云端归档和报告历史下载；如演示确有需要再增加 Word。
 7. Vercel 环境变量和正式部署验收。
 8. 真实施工照片评估、阈值调整和自有模型训练。
 
@@ -522,6 +544,7 @@ git status --short
 docs/COLLABORATION_SYSTEM_DESIGN.md 和 docs/ADR-001-CLOUD-STACK.md。
 检查 git status，保护已有改动，并以 origin/main 最新提交为基线。
 下一步先建立 Manager + 两个 Inspector + 一个项目，真实验收云端提交和 RLS，
+然后实现云端正式巡检列表/详情以及 PDF 私有归档，
 不要先引入 LangChain、向量数据库或多 Agent，也不要把图片发送给当前 LLM 网关。
 每个阶段完成后运行 lint、TypeScript、build 和 git diff --check，并更新交接文档。
 ```
