@@ -193,11 +193,29 @@ Zod 校验后的巡检问题草稿
 - 上传或事务失败时，客户端调用清理接口删除已上传照片并通过 `abort_inspection_draft` RPC 删除空草稿。
 - 客户端不能直接修改 `status` 或 `submitted_at`，两个受控 RPC 都会再次验证 `auth.uid()` 和草稿所有权。
 
+### 3.9 企业级前端第一阶段
+
+- 登录页改为深色品牌说明区 + 浅色登录表单的双栏布局，小屏自动收敛为单栏。
+- 主巡检页加入深色侧边导航、顶部上下文栏、系统状态和三阶段巡检进度。
+- 工作区最大宽度提升到 1440px，适配常见笔记本和大屏演示，不再使用狭窄测试卡片。
+- 现有 YOLO、LLM、人工审核、IndexedDB 和 Supabase 提交逻辑未重写，只调整信息层级和展示容器。
+- 尚未实现的问题看板、报告和团队管理在导航中明确标记为“即将推出”，不会伪装成可用功能。
+- 设计参考只用于布局和信息架构，没有复制第三方项目代码：
+  - 通用后台布局：<https://github.com/arhamkhnz/next-shadcn-admin-dashboard>
+  - 施工管理信息架构：<https://github.com/KaguSoftware/ConstructionOS>
+  - 施工 ERP 页面地图：<https://github.com/asimsandhu/construction-erp-dashboard>
+
 ## 4. 关键文件
 
 ```text
 src/app/page.tsx
   页面状态、照片选择、当前照片切换、检测框绘制、误检排除、分析结果和人工审核。
+
+src/components/product-shell.tsx
+  企业工作台的侧边导航、顶部上下文栏、系统状态和响应式页面外壳。
+
+src/app/login/page.tsx
+  企业登录/注册入口；继续调用原有 Supabase Server Actions。
 
 src/components/finding-editor.tsx
   人工新增和编辑 finding 的受控表单；包括照片证据多选和基础必填校验。

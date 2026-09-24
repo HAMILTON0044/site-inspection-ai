@@ -5,14 +5,32 @@
 }
 
 html {
-  background: #f1f5f9;
+  background: #f4f6f8;
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   font-family:
-    Arial,
-    Helvetica,
+    "Segoe UI",
+    "Microsoft YaHei UI",
+    "PingFang SC",
+    system-ui,
     sans-serif;
+  color: #0f172a;
+  background: #f4f6f8;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  color: #0f172a;
+  background: #fde68a;
 }

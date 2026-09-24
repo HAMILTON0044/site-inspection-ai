@@ -14,6 +14,7 @@ import {
 } from "@/components/finding-editor";
 import { CloudSubmission } from "@/components/cloud-submission";
 import { InspectionHistory } from "@/components/inspection-history";
+import { ProductShell } from "@/components/product-shell";
 import {
   loadCloudProjects,
   submitInspectionToCloud,
@@ -1036,50 +1037,70 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-10">
-      <div className="mx-auto max-w-4xl rounded-2xl bg-white p-8 shadow-lg">
-        <header>
-          <p className="text-sm font-semibold uppercase tracking-wider text-blue-600">
-            Site Inspection AI
-          </p>
+    <ProductShell>
+      <main id="workspace" className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-[1440px]">
+          <header className="flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                <span className="h-px w-8 bg-amber-500" />
+                Smart site safety
+              </div>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+                新建智能巡检
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
+                上传施工现场照片，使用本地视觉模型提取证据，再由 AI 生成可审核、可追溯的整改问题草稿。
+              </p>
+            </div>
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              YOLO 本地识别已就绪
+            </div>
+          </header>
 
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">
-            AI 现场巡检分析
-          </h1>
+          <section aria-label="巡检进度" className="mt-7 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">1</span>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">上传与视觉识别</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{photos.length} 张照片 · {photos.filter((photo) => photo.detectionStatus === "DONE").length} 张已识别</p>
+                </div>
+              </div>
+            </div>
+            <div className={`rounded-2xl border p-4 shadow-sm ${result === null ? "border-slate-200 bg-white" : "border-violet-200 bg-violet-50/70"}`}>
+              <div className="flex items-center gap-3">
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold ${result === null ? "bg-slate-100 text-slate-500" : "bg-violet-600 text-white"}`}>2</span>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">AI 分析与人工审核</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{result?.analysis.findings.length ?? 0} 条问题 · {findingReviewCounts.APPROVED} 条已批准</p>
+                </div>
+              </div>
+            </div>
+            <div className={`rounded-2xl border p-4 shadow-sm ${submittedInspectionId ? "border-emerald-200 bg-emerald-50/70" : "border-slate-200 bg-white"}`}>
+              <div className="flex items-center gap-3">
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold ${submittedInspectionId ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-500"}`}>3</span>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">确认并提交记录</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{submittedInspectionId ? "已保存至项目云端" : "等待完成审核"}</p>
+                </div>
+              </div>
+            </div>
+          </section>
 
-          <p className="mt-3 text-slate-600">
-            在浏览器中识别现场照片，并结合巡检备注生成等待人工确认的问题草稿。
-          </p>
-        </header>
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(15,23,42,0.06)]">
+            <div className="border-b border-slate-200 px-5 py-5 sm:px-7">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600">Step 01</p>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">采集现场信息</h2>
+                </div>
+                <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">图片只在浏览器内完成目标检测</p>
+              </div>
+            </div>
 
-        <InspectionHistory
-          records={historyRecords}
-          currentRecordId={currentRecordId}
-          canSave={result !== null}
-          loading={historyLoading}
-          busyRecordId={historyBusyRecordId}
-          message={historyMessage}
-          onSave={handleSaveInspection}
-          onLoad={handleLoadInspection}
-          onDelete={handleDeleteInspection}
-        />
-
-        <CloudSubmission
-          projects={cloudProjects}
-          selectedProjectId={selectedProjectId}
-          projectsLoading={cloudProjectsLoading}
-          busy={cloudBusy}
-          canSubmit={canSubmitToCloud}
-          pendingFindings={findingReviewCounts.PENDING}
-          approvedFindings={findingReviewCounts.APPROVED}
-          rejectedFindings={findingReviewCounts.REJECTED}
-          message={cloudMessage}
-          submittedInspectionId={submittedInspectionId}
-          onProjectChange={setSelectedProjectId}
-          onSubmit={handleCloudSubmit}
-        />
-
-        <form onSubmit={handleSubmit} className="mt-8">
+            <form onSubmit={handleSubmit} className="p-5 sm:p-7">
           <fieldset>
             <legend className="font-semibold text-slate-800">
               现场照片
@@ -1322,7 +1343,8 @@ export default function Home() {
                 ? "AI 正在分析……"
                 : "开始分析"}
           </button>
-        </form>
+            </form>
+          </section>
 
         {error && (
           <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
@@ -1332,7 +1354,7 @@ export default function Home() {
         )}
 
         {result !== null && (
-          <section className="mt-8">
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-bold text-slate-900">
                 AI 分析草稿
@@ -1631,7 +1653,37 @@ export default function Home() {
             )}
           </section>
         )}
-      </div>
-    </main>
+
+          <section id="records" className="mt-6 grid gap-6 xl:grid-cols-2">
+            <InspectionHistory
+              records={historyRecords}
+              currentRecordId={currentRecordId}
+              canSave={result !== null}
+              loading={historyLoading}
+              busyRecordId={historyBusyRecordId}
+              message={historyMessage}
+              onSave={handleSaveInspection}
+              onLoad={handleLoadInspection}
+              onDelete={handleDeleteInspection}
+            />
+
+            <CloudSubmission
+              projects={cloudProjects}
+              selectedProjectId={selectedProjectId}
+              projectsLoading={cloudProjectsLoading}
+              busy={cloudBusy}
+              canSubmit={canSubmitToCloud}
+              pendingFindings={findingReviewCounts.PENDING}
+              approvedFindings={findingReviewCounts.APPROVED}
+              rejectedFindings={findingReviewCounts.REJECTED}
+              message={cloudMessage}
+              submittedInspectionId={submittedInspectionId}
+              onProjectChange={setSelectedProjectId}
+              onSubmit={handleCloudSubmit}
+            />
+          </section>
+        </div>
+      </main>
+    </ProductShell>
   );
 }

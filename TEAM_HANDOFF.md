@@ -3,7 +3,7 @@
 最后更新：2026-09-24  
 当前分支：`main`  
 远程仓库：<https://github.com/HAMILTON0044/site-inspection-ai>  
-交接基线提交：`9b25582 feat: submit reviewed inspections to cloud`
+交接基线：以 `origin/main` 最新提交为准（`6cb63d3` 之后已加入企业级前端第一阶段）
 
 > 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 本地草稿保存 → Supabase 私有云端正式提交”的基础闭环，下一阶段重点是多角色真实验收、正式记录 Dashboard 和报告生成。
 
@@ -20,6 +20,7 @@
 7. 巡检员可以新增、修改、删除、批准或驳回 finding。
 8. 未提交内容可以保存到 IndexedDB，刷新后继续处理。
 9. 审核完成后，照片进入 Supabase 私有 Storage，正式数据通过数据库事务写入 PostgreSQL。
+10. 登录页和巡检工作台已完成第一阶段企业视觉改造：统一品牌、侧边导航、顶部状态栏、三步巡检进度和宽屏工作区。
 
 仍未完成的主要部分：
 
@@ -253,6 +254,12 @@ Project ref：`zjbkiwatbfujqssibkbs`
 ```text
 src/app/page.tsx
   主巡检页面、照片状态、分析结果、审核和提交入口。
+
+src/components/product-shell.tsx
+  企业工作台外壳；包含桌面侧边导航、顶部栏、系统状态和后续模块占位。
+
+src/app/login/page.tsx
+  双栏企业登录入口；保留原有 Supabase 登录与巡检员注册 Server Actions。
 
 src/lib/vision.ts
   ONNX Runtime Web、YOLO 预处理、输出解析、NMS 和坐标还原。
@@ -513,7 +520,7 @@ git status --short
 ```text
 请先完整阅读 AGENTS.md、TEAM_HANDOFF.md、AI_HANDOFF.md、
 docs/COLLABORATION_SYSTEM_DESIGN.md 和 docs/ADR-001-CLOUD-STACK.md。
-检查 git status，保护已有改动。当前 main 基线提交为 9b25582。
+检查 git status，保护已有改动，并以 origin/main 最新提交为基线。
 下一步先建立 Manager + 两个 Inspector + 一个项目，真实验收云端提交和 RLS，
 不要先引入 LangChain、向量数据库或多 Agent，也不要把图片发送给当前 LLM 网关。
 每个阶段完成后运行 lint、TypeScript、build 和 git diff --check，并更新交接文档。
@@ -526,4 +533,3 @@ docs/COLLABORATION_SYSTEM_DESIGN.md 和 docs/ADR-001-CLOUD-STACK.md。
 - `docs/ADR-001-CLOUD-STACK.md`：云端技术选型决策。
 - `supabase/README.md`：migration、Storage 和 Manager 初始化说明。
 - `public/models/README.md`：YOLO 模型来源、哈希和许可证提示。
-
