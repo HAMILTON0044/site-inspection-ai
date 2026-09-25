@@ -85,6 +85,18 @@ export type CloudGeneratedReport = {
   signedUrl: string | null;
 };
 
+export type CloudReportListItem = {
+  id: string;
+  inspectionId: string;
+  inspectionNumber: string;
+  projectName: string;
+  projectCode: string;
+  inspectorName: string;
+  format: string;
+  generatedAt: string;
+  signedUrl: string | null;
+};
+
 export type CloudInspectionDetail = {
   id: string;
   inspectionNumber: string;
@@ -207,6 +219,11 @@ type GeneratedReportRow = {
   storage_key: string;
   generated_at: string;
 };
+
+type ReportInspectionRow = Pick<
+  InspectionRow,
+  "id" | "project_id" | "inspection_number" | "created_by" | "status"
+>;
 
 function incrementCount(map: Map<string, number>, key: string) {
   map.set(key, (map.get(key) ?? 0) + 1);
@@ -350,6 +367,99 @@ export async function getCloudInspectionList(): Promise<
         photoCount: photoCounts.get(inspection.id) ?? 0,
         reportCount: reportCounts.get(inspection.id) ?? 0,
       };
+    }),
+  };
+}
+
+export async function getCloudReportList(): Promise<
+  CloudQueryResult<CloudReportListItem[]>
+> {
+  const supabase = await createClient();
+  const { data: claimsData } = await supabase.auth.getClaims();
+
+  if (!claimsData?.claims?.sub) {
+    return { ok: false, error: "请先登录。", status: 401 };
+  }
+
+  const { data: rawReports, error: reportsError } = await supabase
+    .from("generated_reports")
+    .select("id, inspection_id, format, storage_key, generated_at")
+    .order("generated_at", { ascending: false });
+
+  if (reportsError) {
+    console.error("Failed to load cloud reports", reportsError);
+    return { ok: false, error: "无法读取报告归档，请稍后重试。", status: 500 };
+  }
+
+  const reports = (rawReports ?? []) as GeneratedReportRow[];
+  if (reports.length === 0) return { ok: true, data: [] };
+
+  const inspectionIds = [...new Set(reports.map((report) => report.inspection_id))];
+  const { data: rawInspections, error: inspectionsError } = await supabase
+    .from("inspections")
+    .select("id, project_id, inspection_number, created_by, status")
+    .in("id", inspectionIds)
+    .in("status", ["SUBMITTED", "ARCHIVED"]);
+
+  if (inspectionsError) {
+    console.error("Failed to load report inspections", inspectionsError);
+    return { ok: false, error: "无法读取报告关联巡检，请稍后重试。", status: 500 };
+  }
+
+  const inspections = (rawInspections ?? []) as ReportInspectionRow[];
+  if (inspections.length === 0) return { ok: true, data: [] };
+
+  const projectIds = [...new Set(inspections.map((inspection) => inspection.project_id))];
+  const profileIds = [...new Set(inspections.map((inspection) => inspection.created_by))];
+  const [projectsResult, profilesResult] = await Promise.all([
+    supabase.from("projects").select("id, name, code").in("id", projectIds),
+    supabase.from("profiles").select("id, display_name").in("id", profileIds),
+  ]);
+
+  const relatedError = [projectsResult.error, profilesResult.error].find(Boolean);
+  if (relatedError) {
+    console.error("Failed to load report relations", relatedError);
+    return { ok: false, error: "无法读取报告关联信息，请稍后重试。", status: 500 };
+  }
+
+  const inspectionMap = new Map(inspections.map((inspection) => [inspection.id, inspection]));
+  const projectMap = new Map(
+    ((projectsResult.data ?? []) as ProjectRow[]).map((project) => [project.id, project]),
+  );
+  const profileMap = new Map(
+    ((profilesResult.data ?? []) as ProfileRow[]).map((profile) => [profile.id, profile.display_name]),
+  );
+  const signedUrls = new Map<string, string | null>();
+
+  await Promise.all(
+    reports.map(async (report) => {
+      const { data, error } = await supabase.storage
+        .from("inspection-reports")
+        .createSignedUrl(report.storage_key, 600);
+      if (error) {
+        console.error("Failed to sign report archive", { reportId: report.id, message: error.message });
+      }
+      signedUrls.set(report.id, data?.signedUrl ?? null);
+    }),
+  );
+
+  return {
+    ok: true,
+    data: reports.flatMap((report) => {
+      const inspection = inspectionMap.get(report.inspection_id);
+      if (!inspection) return [];
+      const project = projectMap.get(inspection.project_id);
+      return [{
+        id: report.id,
+        inspectionId: report.inspection_id,
+        inspectionNumber: inspection.inspection_number,
+        projectName: project?.name ?? "未知项目",
+        projectCode: project?.code ?? "—",
+        inspectorName: profileMap.get(inspection.created_by) ?? "未知巡检员",
+        format: report.format,
+        generatedAt: report.generated_at,
+        signedUrl: signedUrls.get(report.id) ?? null,
+      }];
     }),
   };
 }

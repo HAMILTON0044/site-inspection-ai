@@ -19,6 +19,8 @@ type ReportDownloadProps = {
   reviewDecisions: Record<string, ReviewDecision>;
   photos: ReportSourcePhoto[];
   projectName: string;
+  projectId?: string;
+  inspectionId?: string;
   disabled: boolean;
 };
 
@@ -141,9 +143,12 @@ export function ReportDownload({
   reviewDecisions,
   photos,
   projectName,
+  projectId,
+  inspectionId,
   disabled,
 }: ReportDownloadProps) {
   const [generating, setGenerating] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [message, setMessage] = useState("");
 
   async function handleDownload() {
@@ -193,6 +198,53 @@ export function ReportDownload({
           <reportModule.InspectionReportDocument data={reportData} />,
         )
         .toBlob();
+
+      if (inspectionId && projectId) {
+        setArchiving(true);
+        const reportFileId = crypto.randomUUID();
+        const storageKey = `${projectId}/${inspectionId}/reports/${reportNumber}-${reportFileId}.pdf`;
+        const supabase = createClient();
+        try {
+          const { error: uploadError } = await supabase.storage
+            .from("inspection-reports")
+            .upload(storageKey, blob, {
+              contentType: "application/pdf",
+              upsert: false,
+            });
+
+          if (uploadError) {
+            throw new Error(`报告归档上传失败：${uploadError.message}`);
+          }
+
+          const archiveResponse = await fetch(`/api/inspections/${inspectionId}/reports`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ storageKey, format: "PDF" }),
+          });
+
+          if (!archiveResponse.ok) {
+            let archiveMessage = "报告归档失败。";
+            try {
+              const archiveBody = (await archiveResponse.json()) as { error?: string };
+              archiveMessage = archiveBody.error || archiveMessage;
+            } catch {
+              // Keep the user-facing fallback when the API response is not JSON.
+            }
+            throw new Error(archiveMessage);
+          }
+        } catch (archiveError) {
+          const { error: cleanupError } = await supabase.storage
+            .from("inspection-reports")
+            .remove([storageKey]);
+          if (cleanupError) {
+            console.error("Failed to clean up archived report upload", cleanupError);
+          }
+          throw archiveError;
+        } finally {
+          setArchiving(false);
+        }
+      }
+
       const downloadUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = downloadUrl;
@@ -201,7 +253,11 @@ export function ReportDownload({
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(downloadUrl);
-      setMessage("PDF 报告已生成并开始下载。");
+      setMessage(
+        inspectionId && projectId
+          ? "PDF 报告已归档并开始下载。"
+          : "PDF 报告已生成并开始下载。",
+      );
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -236,7 +292,13 @@ export function ReportDownload({
           <path d="M12 10v6" />
           <path d="m9.5 13.5 2.5 2.5 2.5-2.5" />
         </svg>
-        {generating ? "正在生成 PDF……" : "下载正式 PDF 报告"}
+        {generating
+          ? archiving
+            ? "正在归档 PDF……"
+            : "正在生成 PDF……"
+          : inspectionId && projectId
+            ? "归档并下载 PDF"
+            : "下载正式 PDF 报告"}
       </button>
       {disabled && (
         <p className="text-right text-xs text-amber-700">

@@ -6,7 +6,7 @@
 远程仓库：<https://github.com/HAMILTON0044/site-inspection-ai>  
 交接基线：以 `origin/main` 最新提交为准
 
-> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 正式提交 → 项目/成员管理 → finding 整改 Dashboard → 跟进复核闭环 → PDF 报告”的可运行主链路，下一阶段重点是多角色真实验收、报告云端归档和 Vercel 演示部署。
+> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 正式提交 → 项目/成员管理 → finding 整改 Dashboard → 跟进复核闭环 → PDF 生成与归档”的可运行主链路，下一阶段重点是多角色真实验收、应用报告归档 migration 和 Vercel 演示部署。
 
 ## 1. 交接时项目处于什么阶段
 
@@ -28,7 +28,7 @@
 仍未完成的主要部分：
 
 - Manager/Inspector 多账号真实权限验收。
-- Word 报告和 PDF 云端归档（浏览器端正式 PDF 已完成）。
+- Word 报告；PDF 云端归档代码已完成，但仍需在目标 Supabase 执行 `202609250005_generated_report_cleanup.sql` 并用真实账号验收。
 - Vercel 正式部署后的整体验收。
 
 ## 2. 产品要解决的问题
@@ -351,6 +351,12 @@ src/app/inspections/page.tsx
 src/app/inspections/[id]/page.tsx
   巡检详情、finding、照片检测框、审计事件和报告归档。
 
+src/app/reports/page.tsx
+  报告中心、归档版本列表、短期 signed URL 下载和关联巡检入口。
+
+src/app/api/inspections/[id]/reports/route.ts
+  校验正式巡检权限、报告路径和格式，并写入 `generated_reports`。
+
 src/app/api/projects/route.ts
   GET 返回当前用户可访问的 ACTIVE 项目；POST 仅允许 Manager 创建项目。
 
@@ -371,6 +377,9 @@ src/app/api/inspections/drafts/route.ts
 
 src/app/api/inspections/[id]/route.ts
   GET 正式记录详情；POST 正式提交；DELETE 失败清理。
+
+scripts/provision-demo.mjs 和 scripts/check-api-access.mjs
+  创建/复用演示账号与项目，并检查匿名接口访问保护。
 
 src/app/api/inspections/route.ts
   当前账号可读取的正式巡检列表。
@@ -470,7 +479,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 - 当前只有用于页面检查的 Inspector 登录会话；没有 Manager、项目、正式巡检或 finding 测试数据。
 - 因此最新云端提交链路尚未使用真实账号完成一次完整照片提交验收。
 - 项目管理和 finding 整改代码已完成，但因缺少 Manager、项目和正式 finding 数据，尚未完成真实多角色事务验收。
-- 浏览器端 PDF 已完成，但尚未上传到私有 `inspection-reports` Bucket，也未写入 `generated_reports`；Word 尚未实现。
+- PDF 云端归档代码已完成；目标 Supabase 仍需执行 `202609250005_generated_report_cleanup.sql`，并用真实提交记录确认 Storage 文件、`generated_reports` 和报告中心下载均正常。Word 尚未实现。
 - LLM 看不到原图，只能使用检测 JSON 和文字备注。
 - 当前 YOLO 模型主要识别 PPE，不能可靠判断通道堵塞、电缆布置或材料堆放关系。
 - 模型和训练数据许可证适合黑客松原型；商业发布前必须重新审查。
@@ -518,9 +527,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 
 ## 14. 推荐的后续开发顺序
 
-1. 用一个 Manager 和两个 Inspector 完成项目、提交、RLS 与整改闭环真实验收。
-2. PDF 云端归档和报告历史下载；如演示确有需要再增加 Word。
-3. Vercel 环境变量和正式部署验收。
+1. 应用报告归档 migration，并用一个 Manager 和两个 Inspector 完成项目、提交、RLS、报告和整改闭环真实验收。
+2. Vercel 环境变量和正式部署验收。
+3. 如演示确有需要，再增加 Word 导出。
 4. 真实施工照片评估、阈值调整和自有模型训练。
 
 不要优先做 LangChain、向量数据库或多 Agent。除非新的需求明确需要知识检索、后台长期任务或多工具自治，否则这些基础设施会增加复杂度，却不会直接完成当前演示闭环。

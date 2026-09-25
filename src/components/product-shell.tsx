@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 type ProductShellProps = {
   children: ReactNode;
-  activeItem?: "new" | "records" | "findings" | "projects";
+  activeItem?: "new" | "records" | "findings" | "projects" | "reports";
   pageLabel?: string;
   title?: string;
 };
@@ -166,16 +166,16 @@ export function ProductShell({
                 <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
               )}
             </Link>
-            <div
-              className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-500"
-              title="后续版本开放"
+            <Link
+              href="/reports"
+              className={navigationClass(activeItem === "reports")}
             >
               <Icon name="report" />
               报告中心
-              <span className="ml-auto rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
-                即将推出
-              </span>
-            </div>
+              {activeItem === "reports" && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
+              )}
+            </Link>
           </div>
         </nav>
 
@@ -250,6 +250,16 @@ export function ProductShell({
             }`}
           >
             团队项目
+          </Link>
+          <Link
+            href="/reports"
+            className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${
+              activeItem === "reports"
+                ? "bg-slate-950 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            报告中心
           </Link>
         </nav>
 

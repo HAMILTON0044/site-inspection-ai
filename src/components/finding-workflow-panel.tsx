@@ -65,7 +65,8 @@ export function FindingWorkflowPanel({
     (finding.status === "ASSIGNED" || finding.status === "REOPENED");
   const canRequestVerification =
     (isManager || isAssignee) && finding.status === "IN_PROGRESS";
-  const canFollowUp = finding.status !== "CLOSED";
+  const canFollowUp =
+    (isManager || isAssignee) && finding.status !== "CLOSED";
   const members = useMemo(
     () => [...finding.projectMembers].sort((a, b) => a.displayName.localeCompare(b.displayName, "zh-CN")),
     [finding.projectMembers],
@@ -130,16 +131,24 @@ export function FindingWorkflowPanel({
       setFeedback({ tone: "error", message: "一次最多上传 5 张整改照片。" });
       return;
     }
-    for (const file of files) {
-      extensionFor(file.type);
-      if (file.size > 10 * 1024 * 1024) {
-        setFeedback({ tone: "error", message: `“${file.name}”超过 10 MB。` });
-        return;
+    try {
+      for (const file of files) {
+        extensionFor(file.type);
+        if (file.size > 10 * 1024 * 1024) {
+          setFeedback({ tone: "error", message: `“${file.name}”超过 10 MB。` });
+          return;
+        }
+        if (file.name.length > 255) {
+          setFeedback({ tone: "error", message: `“${file.name}”文件名过长。` });
+          return;
+        }
       }
-      if (file.name.length > 255) {
-        setFeedback({ tone: "error", message: `“${file.name}”文件名过长。` });
-        return;
-      }
+    } catch (error) {
+      setFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : "整改照片格式不受支持。",
+      });
+      return;
     }
 
     setPending("follow-up");

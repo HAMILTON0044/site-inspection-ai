@@ -1380,6 +1380,8 @@ export default function Home() {
                 analysis={result.analysis}
                 reviewDecisions={reviewDecisions}
                 photos={photos}
+                projectId={selectedProjectId || undefined}
+                inspectionId={submittedInspectionId || undefined}
                 projectName={
                   cloudProjects.find(
                     (project) => project.id === selectedProjectId,

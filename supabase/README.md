@@ -63,6 +63,8 @@
 
 该 migration 已于 2026-09-25 正式执行。复核确认 4 个函数均为 `SECURITY DEFINER`，`authenticated` 具有执行权；函数权限和 Storage policy 的综合验证结果为 `all_permissions_verified = true`。
 
+`migrations/202609250005_generated_report_cleanup.sql` 增加正式报告对象的失败清理 policy。应用报告归档代码前，需要在目标 Supabase 项目执行该 migration。
+
 ## 重要安全约束
 
 - 新注册用户始终创建为 `INSPECTOR`，不能通过注册 metadata 把自己提升为 Manager。

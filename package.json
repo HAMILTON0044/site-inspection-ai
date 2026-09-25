@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "demo:provision": "node scripts/provision-demo.mjs",
+    "demo:check-api": "node scripts/check-api-access.mjs"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.9.0",
