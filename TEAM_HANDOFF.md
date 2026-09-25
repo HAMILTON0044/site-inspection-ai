@@ -6,7 +6,7 @@
 远程仓库：<https://github.com/HAMILTON0044/site-inspection-ai>  
 交接基线：以 `origin/main` 最新提交为准
 
-> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 正式提交 → 项目/成员管理 → finding 整改 Dashboard → 跟进复核闭环 → PDF 生成与归档”的可运行主链路，数据库安全加固 migration 已部署，下一阶段重点是多角色真实验收和 Vercel 演示部署。
+> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 正式提交 → 项目/成员管理 → finding 整改 Dashboard → 跟进复核闭环 → PDF 生成与归档”的可运行主链路，数据库安全加固与 Vercel Production 均已部署，下一阶段重点是多角色真实验收。
 
 ## 1. 交接时项目处于什么阶段
 
@@ -29,7 +29,7 @@
 
 - Manager/Inspector 多账号真实权限验收。
 - Word 报告；PDF 云端归档和安全 migration 已完成，但仍需用真实正式巡检验收上传、归档和下载。
-- Vercel 正式部署后的整体验收。
+- 生产环境登录后的完整照片分析与多角色业务验收。
 
 ## 2. 产品要解决的问题
 
@@ -489,6 +489,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 - 匿名访问正式记录列表和详情 GET API 均返回 HTTP 401。
 - 真实 Inspector 会话已打开 `/projects` 和 `/findings`：只能看到 Inspector 权限，空状态和筛选正确，未暴露 Manager 操作。
 - 第四个 migration 的 4 个函数和失败上传清理 policy 已在系统目录复核；综合权限查询返回 `all_permissions_verified = true`。
+- Vercel Production 已于 2026-09-25 部署完成：<https://site-inspection-ai.vercel.app>，部署状态为 `Ready`。
+- 生产环境 `/login` 返回 200；匿名访问 `/`、`/findings`、`/reports` 会跳转登录，受保护 API 返回 401。
+- 生产环境可正常下载 `construction-ppe-yolov8n.onnx`（12,245,949 bytes，HTTP 200）。
 
 ## 12. 当前已知限制
 
@@ -553,7 +556,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ## 14. 推荐的后续开发顺序
 
 1. 用一个 Manager 和两个 Inspector 完成项目、提交、RLS、报告和整改闭环真实验收。
-2. Vercel 环境变量和正式部署验收。
+2. 使用真实账号验收 Vercel Production 的登录、LLM 分析、照片上传、PDF 归档和跨账号权限。
 3. 如演示确有需要，再增加 Word 导出。
 4. 真实施工照片评估、阈值调整和自有模型训练。
 
@@ -636,8 +639,7 @@ git status --short
 请先完整阅读 AGENTS.md、TEAM_HANDOFF.md、AI_HANDOFF.md、
 docs/COLLABORATION_SYSTEM_DESIGN.md 和 docs/ADR-001-CLOUD-STACK.md。
 检查 git status，保护已有改动，并以 origin/main 最新提交为基线。
-下一步先建立 Manager + 两个 Inspector + 一个项目，真实验收云端提交、记录列表/详情、RLS 和已实现的 finding 整改闭环，
-然后实现 PDF 私有归档并完成 Vercel 演示部署，
+下一步先建立 Manager + 两个 Inspector + 一个项目，在已部署的 Vercel Production 真实验收云端提交、记录列表/详情、RLS、PDF 私有归档和 finding 整改闭环，
 不要先引入 LangChain、向量数据库或多 Agent，也不要把图片发送给当前 LLM 网关。
 每个阶段完成后运行 lint、TypeScript、build 和 git diff --check，并更新交接文档。
 ```

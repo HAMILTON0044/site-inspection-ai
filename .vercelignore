@@ -1,0 +1,9 @@
+.git
+.next
+.vercel
+node_modules
+datasets
+output
+codex-generated
+.env*
+*.tsbuildinfo

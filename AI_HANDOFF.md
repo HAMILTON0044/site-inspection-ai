@@ -516,6 +516,7 @@ git status --short
 - IndexedDB 本地历史已按登录用户隔离；每次云端提交重新生成正式 finding UUID，避免同一草稿修改后再次提交发生主键冲突。
 - 草稿照片列表读取失败时会保留草稿；Manager 界面已增加 CLOSED → REOPENED 操作。
 - `202609250006_workflow_security_hardening.sql` 已部署到 Supabase；12 项系统目录与权限检查全部通过，下一步进行真实 Manager/Inspector 多角色验收。
+- Vercel Production 已部署到 <https://site-inspection-ai.vercel.app>；构建状态 `Ready`，登录页、匿名重定向、API 401 和 12.2 MB ONNX 静态资源均已完成线上检查。
 
 ## 10. 模型与许可证
 
@@ -622,7 +623,7 @@ type SelectedPhoto = {
 2. 验证退出、刷新 token、删除或禁用账号后的会话行为。
 3. 用真实正式巡检验证 PDF 上传到私有 `inspection-reports`、`generated_reports` 归档和报告中心下载。
 4. 如黑客松演示确有需要，再补充 Word 导出。
-5. 完成 Vercel 部署并检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
+5. 使用真实登录账号验收 Vercel Production 的 LLM、Supabase、照片上传、报告归档和跨账号流程。
 6. 使用现场照片评估置信度阈值和误检率。
 7. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
 8. 训练许可证清晰的自有模型。
