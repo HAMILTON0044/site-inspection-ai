@@ -10,6 +10,11 @@ const ReportRequestSchema = z.object({
   format: z.literal("PDF"),
 });
 
+const ArchivedReportSchema = z.object({
+  report_id: z.uuid(),
+  report_generated_at: z.string(),
+});
+
 function isReportStorageKey(value: string, projectId: string, inspectionId: string) {
   const prefix = `${projectId}/${inspectionId}/reports/`;
   return value.startsWith(prefix) && value.endsWith(".pdf") && !value.slice(prefix.length).includes("/");
@@ -63,14 +68,11 @@ export async function POST(request: Request, context: ReportRouteContext) {
   }
 
   const { data: report, error: insertError } = await supabase
-    .from("generated_reports")
-    .insert({
-      inspection_id: idResult.data,
-      format: parsed.data.format,
-      storage_key: parsed.data.storageKey,
-      generated_by: userId,
+    .rpc("archive_generated_report", {
+      target_inspection_id: idResult.data,
+      target_storage_key: parsed.data.storageKey,
+      target_format: parsed.data.format,
     })
-    .select("id, generated_at")
     .single();
 
   if (insertError) {
@@ -78,5 +80,14 @@ export async function POST(request: Request, context: ReportRouteContext) {
     return Response.json({ error: "报告归档失败。" }, { status: 409 });
   }
 
-  return Response.json({ reportId: report.id, generatedAt: report.generated_at });
+  const archivedReport = ArchivedReportSchema.safeParse(report);
+  if (!archivedReport.success) {
+    console.error("Report archive RPC returned an invalid result", archivedReport.error);
+    return Response.json({ error: "报告已经上传，但归档结果无法确认。" }, { status: 500 });
+  }
+
+  return Response.json({
+    reportId: archivedReport.data.report_id,
+    generatedAt: archivedReport.data.report_generated_at,
+  });
 }

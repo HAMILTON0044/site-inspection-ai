@@ -283,7 +283,10 @@ export async function submitInspectionToCloud({
         }
 
         return {
-          id: finding.id,
+          // A local draft can be submitted again as a new inspection after edits.
+          // Generate a database ID per submission so the new inspection never
+          // collides with a finding already stored by an earlier submission.
+          id: crypto.randomUUID(),
           category: finding.category,
           title: finding.title,
           description: finding.description,

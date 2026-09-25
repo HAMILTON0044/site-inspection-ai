@@ -117,6 +117,10 @@ export async function DELETE(
 
   if (listError) {
     console.error("Failed to list draft photo objects", listError);
+    return Response.json(
+      { error: "无法确认草稿照片是否已清理，已保留草稿以便稍后重试。" },
+      { status: 500 },
+    );
   } else if (objects.length > 0) {
     const paths = objects.map((object) => `${folder}/${object.name}`);
     const { error: removeError } = await supabase.storage

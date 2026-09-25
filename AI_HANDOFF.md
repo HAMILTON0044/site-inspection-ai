@@ -507,11 +507,15 @@ git status --short
 - 普通帽子可能被误认为安全帽。
 - 小目标、遮挡、逆光、夜间和模糊图片可能降低准确率。
 - LLM 只接收按照片分组的检测 JSON，仍然看不到原始图片。
-- 已支持浏览器端正式 PDF 和 PDF 云端归档；Word 报告尚未实现。归档依赖新增的 `202609250005_generated_report_cleanup.sql` migration。
+- 已支持浏览器端正式 PDF 和 PDF 云端归档；Word 报告尚未实现。报告失败清理与归档权限已由已部署的 `202609250006_workflow_security_hardening.sql` 收口。
 - 未提交巡检历史目前只保存在当前浏览器的 IndexedDB 中；已正式提交记录可以通过云端记录页跨设备读取。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
 - 云端正式提交、正式记录列表/详情、项目管理、finding Dashboard 和整改详情交互均已实现。
 - 当前没有 Manager、项目、正式巡检和 finding 测试数据，因此工作流仍需用 Manager + 两个 Inspector 完成一次真实多角色端到端验收。
+- 2026-09-25 全项目复查后新增第六个安全加固 migration：撤销跟进/整改照片/报告元数据的客户端直接插入权限，加入受控重开和报告归档 RPC，并限制失败上传清理只能删除未登记对象。
+- IndexedDB 本地历史已按登录用户隔离；每次云端提交重新生成正式 finding UUID，避免同一草稿修改后再次提交发生主键冲突。
+- 草稿照片列表读取失败时会保留草稿；Manager 界面已增加 CLOSED → REOPENED 操作。
+- `202609250006_workflow_security_hardening.sql` 已部署到 Supabase；12 项系统目录与权限检查全部通过，下一步进行真实 Manager/Inspector 多角色验收。
 
 ## 10. 模型与许可证
 
@@ -616,7 +620,7 @@ type SelectedPhoto = {
 
 1. 创建首个 Manager、项目和两个 Inspector 成员，端到端验收正式提交、记录列表/详情、RLS 隔离和整改状态机。
 2. 验证退出、刷新 token、删除或禁用账号后的会话行为。
-3. 把浏览器生成的 PDF 上传到私有 `inspection-reports` Bucket，并在 `generated_reports` 记录版本和对象路径。
+3. 用真实正式巡检验证 PDF 上传到私有 `inspection-reports`、`generated_reports` 归档和报告中心下载。
 4. 如黑客松演示确有需要，再补充 Word 导出。
 5. 完成 Vercel 部署并检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
 6. 使用现场照片评估置信度阈值和误检率。

@@ -25,7 +25,8 @@ export type StoredPhoto = {
 };
 
 export type StoredInspectionRecord = {
-  version: 1;
+  version: 2;
+  ownerId: string;
   id: string;
   title: string;
   createdAt: string;
@@ -68,7 +69,7 @@ function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
-export async function listInspectionRecords() {
+export async function listInspectionRecords(ownerId: string) {
   const database = await openDatabase();
 
   try {
@@ -77,9 +78,14 @@ export async function listInspectionRecords() {
       transaction.objectStore(STORE_NAME).getAll(),
     );
 
-    return records.sort((left, right) =>
-      right.updatedAt.localeCompare(left.updatedAt),
-    );
+    return records
+      .filter(
+        (record) =>
+          record.version === 2 && record.ownerId === ownerId,
+      )
+      .sort((left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt),
+      );
   } finally {
     database.close();
   }
@@ -88,6 +94,10 @@ export async function listInspectionRecords() {
 export async function saveInspectionRecord(
   record: StoredInspectionRecord,
 ) {
+  if (!record.ownerId) {
+    throw new Error("无法确认本地巡检记录的所属账号。");
+  }
+
   const database = await openDatabase();
 
   try {
@@ -98,14 +108,24 @@ export async function saveInspectionRecord(
   }
 }
 
-export async function deleteInspectionRecord(recordId: string) {
+export async function deleteInspectionRecord(
+  recordId: string,
+  ownerId: string,
+) {
   const database = await openDatabase();
 
   try {
     const transaction = database.transaction(STORE_NAME, "readwrite");
-    await requestToPromise(
-      transaction.objectStore(STORE_NAME).delete(recordId),
+    const store = transaction.objectStore(STORE_NAME);
+    const record = await requestToPromise<StoredInspectionRecord | undefined>(
+      store.get(recordId),
     );
+
+    if (!record || record.version !== 2 || record.ownerId !== ownerId) {
+      throw new Error("该本地巡检记录不属于当前账号。");
+    }
+
+    await requestToPromise(store.delete(recordId));
   } finally {
     database.close();
   }

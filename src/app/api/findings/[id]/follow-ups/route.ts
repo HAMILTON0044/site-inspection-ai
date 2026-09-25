@@ -37,7 +37,7 @@ export async function POST(request: Request, context: FindingRouteContext) {
     );
   }
 
-  const { error } = await userContext.supabase.rpc("add_finding_follow_up", {
+  const { error } = await userContext.supabase.rpc("add_assigned_finding_follow_up", {
     target_finding_id: findingId.data,
     target_follow_up_id: parsed.data.followUpId,
     follow_up_comment: parsed.data.comment,

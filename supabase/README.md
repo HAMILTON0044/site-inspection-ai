@@ -63,7 +63,17 @@
 
 该 migration 已于 2026-09-25 正式执行。复核确认 4 个函数均为 `SECURITY DEFINER`，`authenticated` 具有执行权；函数权限和 Storage policy 的综合验证结果为 `all_permissions_verified = true`。
 
-`migrations/202609250005_generated_report_cleanup.sql` 增加正式报告对象的失败清理 policy。应用报告归档代码前，需要在目标 Supabase 项目执行该 migration。
+`migrations/202609250005_generated_report_cleanup.sql` 是报告失败清理的初版 policy，已由后续安全加固 migration 取代；新环境仍按文件名顺序执行全部 migration。
+
+`migrations/202609250006_workflow_security_hardening.sql`：
+
+- 禁止客户端直接写 `finding_follow_ups`、`follow_up_photos` 和 `generated_reports`
+- 只允许 finding 当前负责人或 Manager 上传并登记整改证据
+- 新增 `reopen_finding`，支持 Manager 从待复核或已关闭状态重开问题
+- 新增 `archive_generated_report`，在事务中验证报告对象、所有者、路径和正式巡检权限
+- 报告删除 policy 只允许清理尚未登记到 `generated_reports` 的失败上传对象
+
+该 migration 已于 2026-09-25 正式执行。复核查询的 12 项结果全部为 `true`：4 个安全函数均为 `SECURITY DEFINER`，新受控 RPC 的执行权正确，3 张表的客户端直接插入权已撤销，新报告删除 policy 存在且旧 policy/直写 policy 已移除。
 
 ## 重要安全约束
 

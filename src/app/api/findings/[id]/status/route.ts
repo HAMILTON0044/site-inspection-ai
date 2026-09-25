@@ -33,11 +33,18 @@ export async function POST(request: Request, context: FindingRouteContext) {
     );
   }
 
-  const { error } = await userContext.supabase.rpc("transition_finding_status", {
-    target_finding_id: findingId.data,
-    target_status: parsed.data.status,
-    action_comment: parsed.data.comment || null,
-  });
+  const operation =
+    parsed.data.status === "REOPENED"
+      ? userContext.supabase.rpc("reopen_finding", {
+          target_finding_id: findingId.data,
+          action_comment: parsed.data.comment,
+        })
+      : userContext.supabase.rpc("transition_finding_status", {
+          target_finding_id: findingId.data,
+          target_status: parsed.data.status,
+          action_comment: parsed.data.comment || null,
+        });
+  const { error } = await operation;
 
   if (error) {
     console.error("Failed to transition finding", error);

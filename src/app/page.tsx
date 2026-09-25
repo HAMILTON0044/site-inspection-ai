@@ -33,6 +33,7 @@ import {
   type PpeLabel,
   type VisionDetection,
 } from "@/lib/vision";
+import { createClient } from "@/lib/supabase/client";
 
 type AnalyzeResponse = {
   analysis: InspectionAnalysis;
@@ -129,6 +130,7 @@ export default function Home() {
     string | null
   >(null);
   const [historyMessage, setHistoryMessage] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
   const [cloudProjects, setCloudProjects] = useState<CloudProject[]>([]);
   const [cloudProjectsLoading, setCloudProjectsLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -203,7 +205,21 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
 
-    listInspectionRecords()
+    const supabase = createClient();
+
+    supabase.auth
+      .getUser()
+      .then(({ data, error: authError }) => {
+        if (authError || !data.user) {
+          throw new Error("无法确认当前账号，本地巡检历史暂不可用。");
+        }
+
+        if (!cancelled) {
+          setCurrentUserId(data.user.id);
+        }
+
+        return listInspectionRecords(data.user.id);
+      })
       .then((records) => {
         if (!cancelled) {
           setHistoryRecords(records);
@@ -271,6 +287,11 @@ export default function Home() {
       return;
     }
 
+    if (!currentUserId) {
+      setHistoryMessage("无法确认当前账号，本地巡检历史暂不可用。");
+      return;
+    }
+
     const now = new Date().toISOString();
     const recordId = currentRecordId ?? crypto.randomUUID();
     const createdAt = currentRecordCreatedAt ?? now;
@@ -280,7 +301,8 @@ export default function Home() {
         ? location
         : note.trim().slice(0, 30) || "未命名巡检";
     const record: StoredInspectionRecord = {
-      version: 1,
+      version: 2,
+      ownerId: currentUserId,
       id: recordId,
       title,
       createdAt,
@@ -307,7 +329,7 @@ export default function Home() {
 
     try {
       await saveInspectionRecord(record);
-      const records = await listInspectionRecords();
+      const records = await listInspectionRecords(currentUserId);
       setHistoryRecords(records);
       setCurrentRecordId(recordId);
       setCurrentRecordCreatedAt(createdAt);
@@ -442,7 +464,10 @@ export default function Home() {
     setHistoryMessage("");
 
     try {
-      await deleteInspectionRecord(recordId);
+      if (!currentUserId) {
+        throw new Error("无法确认当前账号，本地巡检历史暂不可用。");
+      }
+      await deleteInspectionRecord(recordId, currentUserId);
       setHistoryRecords((records) =>
         records.filter((record) => record.id !== recordId),
       );

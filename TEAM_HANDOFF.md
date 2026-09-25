@@ -6,7 +6,7 @@
 远程仓库：<https://github.com/HAMILTON0044/site-inspection-ai>  
 交接基线：以 `origin/main` 最新提交为准
 
-> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 正式提交 → 项目/成员管理 → finding 整改 Dashboard → 跟进复核闭环 → PDF 生成与归档”的可运行主链路，下一阶段重点是多角色真实验收、应用报告归档 migration 和 Vercel 演示部署。
+> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 正式提交 → 项目/成员管理 → finding 整改 Dashboard → 跟进复核闭环 → PDF 生成与归档”的可运行主链路，数据库安全加固 migration 已部署，下一阶段重点是多角色真实验收和 Vercel 演示部署。
 
 ## 1. 交接时项目处于什么阶段
 
@@ -28,7 +28,7 @@
 仍未完成的主要部分：
 
 - Manager/Inspector 多账号真实权限验收。
-- Word 报告；PDF 云端归档代码已完成，但仍需在目标 Supabase 执行 `202609250005_generated_report_cleanup.sql` 并用真实账号验收。
+- Word 报告；PDF 云端归档和安全 migration 已完成，但仍需用真实正式巡检验收上传、归档和下载。
 - Vercel 正式部署后的整体验收。
 
 ## 2. 产品要解决的问题
@@ -218,7 +218,7 @@ Supabase 项目：`site-inspection-ai`
 Project ref：`zjbkiwatbfujqssibkbs`  
 区域：Singapore
 
-已部署四个 migration：
+已部署六个 migration：
 
 ### `202609230001_auth_projects.sql`
 
@@ -277,6 +277,22 @@ Project ref：`zjbkiwatbfujqssibkbs`
 - 私有整改照片的失败上传清理 Storage policy
 
 该 migration 已于 2026-09-25 正式执行。复核确认 4 个函数均为 `SECURITY DEFINER`，`authenticated` 具有执行权，相关 Storage policy 只授予登录用户。
+
+### `202609250005_generated_report_cleanup.sql`
+
+创建报告失败上传清理的初版 Storage policy；该 policy 已由第六个 migration 的更严格版本取代。新环境仍按文件名顺序执行。
+
+### `202609250006_workflow_security_hardening.sql`
+
+创建并收紧：
+
+- 仅 finding 当前负责人或 Manager 可登记整改跟进和上传整改照片
+- `reopen_finding(...)`：仅 Manager 可从待复核或已关闭状态重开问题
+- `archive_generated_report(...)`：事务验证报告对象、所有者、路径和正式巡检权限
+- 报告失败清理只能删除未登记到 `generated_reports` 的对象
+- 撤销 `finding_follow_ups`、`follow_up_photos`、`generated_reports` 的客户端直接插入权
+
+该 migration 已于 2026-09-25 正式执行；12 项函数、执行权、表权限和 policy 检查全部返回 `true`。
 
 ## 7. 权限规则
 
@@ -463,7 +479,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
   - `/api/inspections/[id]`
 - 生产构建还包含 `/inspections`、`/inspections/[id]`、`/projects`、`/projects/[id]`、`/findings` 和 `/findings/[id]`，以及对应项目/整改 API。
 - 匿名访问 finding 列表/详情、项目创建和状态转换接口均返回 HTTP 401。
-- Supabase 四个 migration 均已执行。
+- Supabase 六个 migration 均已执行。
 - 9 张业务表全部启用 RLS。
 - 两个 Storage Bucket 都是 private。
 - 正式提交和失败清理 RPC 已在系统表中验证存在和权限。
@@ -479,10 +495,19 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 - 当前只有用于页面检查的 Inspector 登录会话；没有 Manager、项目、正式巡检或 finding 测试数据。
 - 因此最新云端提交链路尚未使用真实账号完成一次完整照片提交验收。
 - 项目管理和 finding 整改代码已完成，但因缺少 Manager、项目和正式 finding 数据，尚未完成真实多角色事务验收。
-- PDF 云端归档代码已完成；目标 Supabase 仍需执行 `202609250005_generated_report_cleanup.sql`，并用真实提交记录确认 Storage 文件、`generated_reports` 和报告中心下载均正常。Word 尚未实现。
+- PDF 云端归档代码和安全 migration 已完成；仍需用真实提交记录确认 Storage 文件、`generated_reports` 和报告中心下载均正常。Word 尚未实现。
 - LLM 看不到原图，只能使用检测 JSON 和文字备注。
 - 当前 YOLO 模型主要识别 PPE，不能可靠判断通道堵塞、电缆布置或材料堆放关系。
 - 模型和训练数据许可证适合黑客松原型；商业发布前必须重新审查。
+
+### 2026-09-25 安全复查修复
+
+- IndexedDB 本地巡检历史现在按 Supabase 用户 ID 隔离；无法确认归属的旧版记录不会展示给任何登录用户。
+- 重复提交经过修改的本地巡检时，会为新正式巡检生成新的 finding UUID，避免跨巡检主键冲突。
+- 新增 `202609250006_workflow_security_hardening.sql`，封闭跟进、整改照片和报告元数据的直接写入旁路。
+- 报告归档 RPC 会验证 Storage 对象真实存在且属于当前用户；已经归档的报告不能再被失败清理删除。
+- Manager 可以从 CLOSED 状态重新打开问题；草稿照片列举失败时不会继续删除草稿。
+- 第六个 migration 已在 Supabase 执行并通过 12 项权限验证；真实 Manager/Inspector 数据验收仍待完成。
 
 ## 13. 接手后的第一组任务
 
@@ -527,7 +552,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 
 ## 14. 推荐的后续开发顺序
 
-1. 应用报告归档 migration，并用一个 Manager 和两个 Inspector 完成项目、提交、RLS、报告和整改闭环真实验收。
+1. 用一个 Manager 和两个 Inspector 完成项目、提交、RLS、报告和整改闭环真实验收。
 2. Vercel 环境变量和正式部署验收。
 3. 如演示确有需要，再增加 Word 导出。
 4. 真实施工照片评估、阈值调整和自有模型训练。

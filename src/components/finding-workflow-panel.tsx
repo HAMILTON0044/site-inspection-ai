@@ -67,6 +67,10 @@ export function FindingWorkflowPanel({
     (isManager || isAssignee) && finding.status === "IN_PROGRESS";
   const canFollowUp =
     (isManager || isAssignee) && finding.status !== "CLOSED";
+  const canReview =
+    isManager &&
+    (finding.status === "AWAITING_VERIFICATION" ||
+      finding.status === "CLOSED");
   const members = useMemo(
     () => [...finding.projectMembers].sort((a, b) => a.displayName.localeCompare(b.displayName, "zh-CN")),
     [finding.projectMembers],
@@ -242,11 +246,11 @@ export function FindingWorkflowPanel({
         </form>
       )}
 
-      {(canStart || (isManager && finding.status === "AWAITING_VERIFICATION")) && (
+      {(canStart || canReview) && (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold tracking-[0.16em] text-blue-600">WORKFLOW ACTION</p>
           <h2 className="mt-2 text-lg font-bold text-slate-950">状态操作</h2>
-          {isManager && finding.status === "AWAITING_VERIFICATION" && (
+          {canReview && (
             <label className="mt-4 block text-sm font-semibold text-slate-700">
               复核结论（必填）
               <textarea value={decisionComment} onChange={(event) => setDecisionComment(event.target.value)} rows={3} maxLength={5000} placeholder="说明关闭依据，或重新打开的原因" className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" />
@@ -264,6 +268,11 @@ export function FindingWorkflowPanel({
                 <button type="button" onClick={() => void transition("REOPENED")} disabled={pending !== null || !decisionComment.trim()} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">复核不通过，重新打开</button>
               </>
             )}
+            {isManager && finding.status === "CLOSED" && (
+              <button type="button" onClick={() => void transition("REOPENED")} disabled={pending !== null || !decisionComment.trim()} className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
+                {pending === "REOPENED" ? "重新打开中……" : "重新打开问题"}
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -272,7 +281,7 @@ export function FindingWorkflowPanel({
         <form onSubmit={addFollowUp} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold tracking-[0.16em] text-blue-600">CORRECTIVE FOLLOW-UP</p>
           <h2 className="mt-2 text-lg font-bold text-slate-950">添加整改跟进</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">同项目成员可以补充现场进展；每次记录永久保留，不覆盖原巡检报告。</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">当前负责人或 Manager 可以补充现场进展；每次记录永久保留，不覆盖原巡检报告。</p>
           <label className="mt-4 block text-sm font-semibold text-slate-700">
             跟进说明
             <textarea name="comment" required rows={4} maxLength={5000} placeholder="描述已采取的措施、现场复查情况或仍需协调的事项" className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" />
