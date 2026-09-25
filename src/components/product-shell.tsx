@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 type ProductShellProps = {
   children: ReactNode;
-  activeItem?: "new" | "records";
+  activeItem?: "new" | "records" | "findings" | "projects";
   pageLabel?: string;
   title?: string;
 };
@@ -89,12 +89,6 @@ function Icon({ name }: { name: IconName }) {
   );
 }
 
-const upcomingItems: Array<{ label: string; icon: IconName }> = [
-  { label: "问题看板", icon: "finding" },
-  { label: "巡检报告", icon: "report" },
-  { label: "团队与项目", icon: "team" },
-];
-
 function navigationClass(active: boolean) {
   return active
     ? "flex items-center gap-3 rounded-xl bg-white/10 px-3 py-3 text-sm font-semibold text-white ring-1 ring-white/10"
@@ -152,19 +146,36 @@ export function ProductShell({
             管理
           </p>
           <div className="mt-3 space-y-1">
-            {upcomingItems.map((item) => (
-              <div
-                key={item.label}
-                className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-500"
-                title="后续版本开放"
-              >
-                <Icon name={item.icon} />
-                {item.label}
-                <span className="ml-auto rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
-                  即将推出
-                </span>
-              </div>
-            ))}
+            <Link
+              href="/findings"
+              className={navigationClass(activeItem === "findings")}
+            >
+              <Icon name="finding" />
+              问题看板
+              {activeItem === "findings" && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
+              )}
+            </Link>
+            <Link
+              href="/projects"
+              className={navigationClass(activeItem === "projects")}
+            >
+              <Icon name="team" />
+              团队与项目
+              {activeItem === "projects" && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
+              )}
+            </Link>
+            <div
+              className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-500"
+              title="后续版本开放"
+            >
+              <Icon name="report" />
+              报告中心
+              <span className="ml-auto rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-slate-500">
+                即将推出
+              </span>
+            </div>
           </div>
         </nav>
 
@@ -198,7 +209,7 @@ export function ProductShell({
 
         <nav
           aria-label="移动端主导航"
-          className="flex gap-2 border-b border-slate-200 bg-white px-4 py-3 lg:hidden"
+          className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-3 lg:hidden"
         >
           <Link
             href="/"
@@ -219,6 +230,26 @@ export function ProductShell({
             }`}
           >
             云端记录
+          </Link>
+          <Link
+            href="/findings"
+            className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${
+              activeItem === "findings"
+                ? "bg-slate-950 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            问题看板
+          </Link>
+          <Link
+            href="/projects"
+            className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold ${
+              activeItem === "projects"
+                ? "bg-slate-950 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            团队项目
           </Link>
         </nav>
 

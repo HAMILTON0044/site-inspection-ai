@@ -202,7 +202,7 @@ Zod 校验后的巡检问题草稿
 - 主巡检页加入深色侧边导航、顶部上下文栏、系统状态和三阶段巡检进度。
 - 工作区最大宽度提升到 1440px，适配常见笔记本和大屏演示，不再使用狭窄测试卡片。
 - 现有 YOLO、LLM、人工审核、IndexedDB 和 Supabase 提交逻辑未重写，只调整信息层级和展示容器。
-- 尚未实现的问题看板、独立报告中心和团队管理在导航中明确标记为“即将推出”，不会伪装成可用功能。
+- 问题看板和项目/团队管理已成为真实可用导航；独立报告中心仍标记为“即将推出”。
 - 设计参考只用于布局和信息架构，没有复制第三方项目代码：
   - 通用后台布局：<https://github.com/arhamkhnz/next-shadcn-admin-dashboard>
   - 施工管理信息架构：<https://github.com/KaguSoftware/ConstructionOS>
@@ -232,6 +232,18 @@ Zod 校验后的巡检问题草稿
 - 非法 UUID、无权限记录、不存在记录和非正式草稿统一进入中文 404，避免泄露记录是否存在。
 - 新增同源只读 API：`GET /api/inspections` 和 `GET /api/inspections/[id]`；两者都会独立验证 Supabase 登录状态。
 - 工作台导航已接入“新建巡检”和“云端记录”，并提供适配窄屏的顶部移动导航。
+
+### 3.15 项目管理与 finding 整改工作流
+
+- `/projects` 和 `/projects/[id]` 提供项目汇总、创建、修改、归档和成员管理；写操作同时经过服务端角色检查与 Supabase RLS。
+- `/findings` 提供未关闭、高风险、逾期、待复核统计，以及状态、项目、风险、本人负责和未指派筛选。
+- `/findings/[id]` 展示原始证据、整改要求、跟进记录、私有照片和审计时间线。
+- Manager 可以指派负责人、设置截止日期和风险；Inspector 只能处理指派给自己的 finding。
+- `manage_finding`、`transition_finding_status` 和 `add_finding_follow_up` 以 `SECURITY DEFINER` RPC 执行服务器端权限校验和事务写入。
+- 状态机覆盖 `OPEN → ASSIGNED → IN_PROGRESS → AWAITING_VERIFICATION → CLOSED` 与 `CLOSED → OPEN` 重开。
+- 提交复核前必须有跟进；关闭/重开要求复核说明；HIGH/CRITICAL 关闭前要求至少一张整改照片。
+- 整改照片直接上传私有 Storage，路径固定为 `{projectId}/{inspectionId}/follow-ups/{findingId}/{followUpId}/{photoId}.{ext}`；API 失败会删除尚未关联的上传对象。
+- 所有指派、期限、风险、评论、证据和状态变化写入不可变 `finding_events`。
 
 ## 4. 关键文件
 
@@ -296,8 +308,26 @@ supabase/migrations/202609230002_inspections_findings_storage.sql
 supabase/migrations/202609230003_submit_inspection_rpc.sql
   正式提交和失败清理 RPC；已在 Supabase 云端执行。
 
+supabase/migrations/202609250004_project_finding_workflow.sql
+  项目 finding 指派、状态转换、跟进事务和失败整改照片清理；已在 Supabase 云端执行。
+
 src/app/api/projects/route.ts
-  返回当前账号通过 RLS 可访问的 ACTIVE 项目。
+  GET 返回当前账号可访问的 ACTIVE 项目；POST 仅允许 Manager 创建项目。
+
+src/app/projects/ 和 src/app/api/projects/[id]/
+  项目列表/详情、资料维护、归档，以及按邮箱添加和移除 Inspector。
+
+src/app/findings/ 和 src/app/api/findings/
+  finding Dashboard/详情，以及指派、状态转换和跟进 API。
+
+src/components/project-admin-forms.tsx
+  Manager 项目和成员管理表单。
+
+src/components/finding-workflow-panel.tsx
+  finding 指派、整改、复核、关闭/重开和私有照片上传操作面板。
+
+src/lib/project-queries.ts 和 src/lib/finding-queries.ts
+  项目/finding 服务端 RLS 查询、聚合和私有整改照片 signed URL。
 
 src/app/api/inspections/drafts/route.ts
   创建属于当前用户和项目的受保护云端草稿。
@@ -318,7 +348,7 @@ src/lib/supabase/proxy.ts
   刷新 Supabase 会话，并执行登录页与工作台之间的访问控制。
 
 src/proxy.ts
-  Next.js 16 Proxy 入口；当前匹配 `/`、`/login` 和 `/inspections/:path*`。
+  Next.js 16 Proxy 入口；保护 `/`、`/login`、`/inspections/:path*`、`/projects/:path*` 和 `/findings/:path*`。
 
 src/app/login/page.tsx
   邮箱密码登录和巡检员注册页面。
@@ -451,6 +481,9 @@ git status --short
 - 不存在的正式巡检 UUID 会进入统一中文 404；无权限、不存在和非正式草稿不会通过详情页暴露差异。
 - 匿名 GET `/api/inspections` 和 GET `/api/inspections/{uuid}` 均返回 HTTP 401。
 - 最新生产构建包含 `/inspections`、`/inspections/[id]`、`/api/inspections` 和扩展后的 `/api/inspections/[id]`，ESLint、TypeScript 与构建均通过。
+- 第四个 migration 已正式执行；4 个工作流函数均为 `SECURITY DEFINER`，`authenticated` 执行权与失败上传清理 Storage policy 的综合复核结果为 `true`。
+- 项目管理和 finding 工作流新增后，ESLint、TypeScript、生产构建与 `git diff --check` 均通过。
+- 真实 Inspector 会话已验证 `/projects` 和 `/findings` 空状态、筛选与只读权限；匿名访问 finding 列表/详情、项目创建和状态转换接口均返回 HTTP 401。
 
 ## 8. 安全与真实性约束
 
@@ -477,9 +510,8 @@ git status --short
 - 已支持浏览器端正式 PDF；Word 报告和已生成报告的云端归档尚未实现。
 - 未提交巡检历史目前只保存在当前浏览器的 IndexedDB 中；已正式提交记录可以通过云端记录页跨设备读取。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
-- 云端正式提交、正式记录列表与详情已经实现；尚未实现 finding Dashboard 和在详情页继续整改的交互。
-- 当前没有测试账号和项目成员数据，因此本阶段只完成了 migration 实际部署、权限复核和生产构建；仍需用 Manager + Inspector 账号执行一次真实照片端到端验收。
-- 当前没有保留测试账号；Manager 提升和多角色权限隔离仍需后续重新创建测试账号验收。
+- 云端正式提交、正式记录列表/详情、项目管理、finding Dashboard 和整改详情交互均已实现。
+- 当前没有 Manager、项目、正式巡检和 finding 测试数据，因此工作流仍需用 Manager + 两个 Inspector 完成一次真实多角色端到端验收。
 
 ## 10. 模型与许可证
 
@@ -529,13 +561,13 @@ git pull --ff-only origin main
 
 ## 12. 推荐的下一阶段
 
-优先完成“多角色权限和问题整改闭环”：
+优先完成“多角色权限和问题整改闭环的真实验收”：
 
 1. Supabase 项目、本地环境变量和 client 封装已经完成。
 2. User、Project、ProjectMember 数据结构和第一阶段 RLS 已经部署。
 3. 登录、注册、受保护路由和服务端权限校验已通过单账号验收；正式提交 RPC 也已经部署。
 4. 保留 IndexedDB 作为未提交草稿层，不要直接删除当前本地历史能力。
-5. 正式记录列表与详情已经完成；下一步使用两个 Inspector 和一个 Manager 验证项目权限隔离、正式提交、照片 signed URL 私有读取和失败清理。
+5. 正式记录列表/详情、项目管理和整改工作流已经完成；下一步使用两个 Inspector 和一个 Manager 验证项目权限隔离、正式提交、整改照片 signed URL、状态机和失败清理。
 
 当前照片状态结构：
 
@@ -582,15 +614,14 @@ type SelectedPhoto = {
 
 建议顺序：
 
-1. 创建首个 Manager、项目和两个 Inspector 成员，端到端验收正式提交、记录列表/详情与 RLS 隔离。
+1. 创建首个 Manager、项目和两个 Inspector 成员，端到端验收正式提交、记录列表/详情、RLS 隔离和整改状态机。
 2. 验证退出、刷新 token、删除或禁用账号后的会话行为。
-3. 实现项目 finding Dashboard 和整改状态机。
-4. 把浏览器生成的 PDF 上传到私有 `inspection-reports` Bucket，并在 `generated_reports` 记录版本和对象路径。
-5. 如黑客松演示确有需要，再补充 Word 导出。
+3. 把浏览器生成的 PDF 上传到私有 `inspection-reports` Bucket，并在 `generated_reports` 记录版本和对象路径。
+4. 如黑客松演示确有需要，再补充 Word 导出。
+5. 完成 Vercel 部署并检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
 6. 使用现场照片评估置信度阈值和误检率。
 7. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
 8. 训练许可证清晰的自有模型。
-9. 部署后检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
 
 ## 14. 给后续 AI 的工作要求
 

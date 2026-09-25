@@ -53,6 +53,16 @@
 
 该 migration 已于 2026-09-24 正式执行。复核查询确认两个函数均存在、`prosecdef = true`，且 `authenticated` 角色可以执行。
 
+`migrations/202609250004_project_finding_workflow.sql` 创建：
+
+- `manage_finding(...)`：仅 Manager 可指派 active Inspector、修改截止日期和风险等级
+- `transition_finding_status(...)`：执行受角色和当前状态约束的整改状态机
+- `add_finding_follow_up(...)`：校验评论、Storage 对象与成员权限后，在事务中追加跟进和照片关系
+- `private.can_delete_unlinked_follow_up_object(text)`：只允许上传者删除尚未关联数据库记录的失败上传对象
+- `follow_up_photos_storage_delete_unlinked_owner` Storage policy
+
+该 migration 已于 2026-09-25 正式执行。复核确认 4 个函数均为 `SECURITY DEFINER`，`authenticated` 具有执行权；函数权限和 Storage policy 的综合验证结果为 `all_permissions_verified = true`。
+
 ## 重要安全约束
 
 - 新注册用户始终创建为 `INSPECTOR`，不能通过注册 metadata 把自己提升为 Manager。
@@ -63,6 +73,9 @@
 - `inspection-photos` 路径必须使用 `{projectId}/{inspectionId}/photos/...` 或 `{projectId}/{inspectionId}/follow-ups/...`。
 - `inspection-reports` 路径必须使用 `{projectId}/{inspectionId}/reports/...`。
 - 正式提交必须通过 `submit_inspection_draft` RPC，不要开放客户端直接修改 `status` 或 `submitted_at`。
+- 正式 finding 的指派、期限、风险和状态变化必须通过工作流 RPC，不要给浏览器开放表级直接更新。
+- Inspector 只能处理指派给自己的 finding；Manager 的关闭/重开操作必须带复核说明。
+- HIGH/CRITICAL finding 关闭前必须存在整改跟进和至少一张跟进照片。
 - 浏览器只负责直接上传私有照片；关系数据必须经过共享 Zod Schema 和服务端 RPC 验证。
 - 若照片上传或事务失败，必须先删除 Storage 对象，再调用 `abort_inspection_draft`，因为删除对象的 RLS 依赖仍然存在的草稿记录。
 

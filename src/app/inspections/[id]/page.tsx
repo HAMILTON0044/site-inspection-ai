@@ -303,6 +303,13 @@ function FindingCard({
         )}
       </div>
 
+      <Link
+        href={`/findings/${finding.id}`}
+        className="mt-5 inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+      >
+        打开整改任务
+      </Link>
+
       {finding.events.length > 0 && (
         <div className="mt-5 border-t border-slate-100 pt-4">
           <p className="text-xs font-bold tracking-wide text-slate-500">

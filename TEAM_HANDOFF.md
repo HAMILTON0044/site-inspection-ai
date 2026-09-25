@@ -4,9 +4,9 @@
 
 当前分支：`main`  
 远程仓库：<https://github.com/HAMILTON0044/site-inspection-ai>  
-交接基线：以 `origin/main` 最新提交为准（`6cb63d3` 之后已加入企业级前端第一阶段）
+交接基线：以 `origin/main` 最新提交为准
 
-> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 本地/云端保存 → 正式 PDF 报告 → 云端正式记录列表与详情”的基础闭环，下一阶段重点是多角色真实验收、finding 整改 Dashboard 和报告云端归档。
+> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 正式提交 → 项目/成员管理 → finding 整改 Dashboard → 跟进复核闭环 → PDF 报告”的可运行主链路，下一阶段重点是多角色真实验收、报告云端归档和 Vercel 演示部署。
 
 ## 1. 交接时项目处于什么阶段
 
@@ -28,7 +28,6 @@
 仍未完成的主要部分：
 
 - Manager/Inspector 多账号真实权限验收。
-- 项目 finding Dashboard 和整改闭环界面。
 - Word 报告和 PDF 云端归档（浏览器端正式 PDF 已完成）。
 - Vercel 正式部署后的整体验收。
 
@@ -201,13 +200,25 @@ finding 草稿
 - 无权限、不存在、非法 UUID 或仍为草稿的记录统一显示中文 404，避免泄露记录存在性。
 - `GET /api/inspections` 与 `GET /api/inspections/[id]` 均独立校验登录状态，匿名请求返回 401。
 
+### 5.9 项目管理与 finding 整改闭环
+
+- `/projects` 提供项目列表、汇总和 Manager 创建入口；`/projects/[id]` 提供项目资料、归档和成员管理。
+- Manager 可以按已注册邮箱加入 Inspector，并通过二次确认移除成员；Inspector 只能读取自己所属项目。
+- `/findings` 提供未关闭、高风险、逾期、待复核统计，以及状态、项目、风险、负责人等筛选。
+- `/findings/[id]` 展示原始证据、整改要求、跟进记录、私有整改照片和不可变审计时间线。
+- Inspector 只能处理指派给自己的 finding；Manager 可以指派负责人、设置截止日期和风险等级，并关闭或重开问题。
+- finding 状态按 `OPEN → ASSIGNED → IN_PROGRESS → AWAITING_VERIFICATION → CLOSED` 受控转换；关闭后的问题可重开。
+- 跟进记录只追加不覆盖；整改照片直接上传私有 Storage，关系数据通过事务 RPC 写入。
+- HIGH/CRITICAL 问题关闭前必须存在跟进，且至少有一张跟进照片；关闭和重开都要求复核说明。
+- 新增、指派、风险/期限变化、评论、证据、状态变化都会写入 `finding_events`。
+
 ## 6. Supabase 当前状态
 
 Supabase 项目：`site-inspection-ai`  
 Project ref：`zjbkiwatbfujqssibkbs`  
 区域：Singapore
 
-已部署三个 migration：
+已部署四个 migration：
 
 ### `202609230001_auth_projects.sql`
 
@@ -255,6 +266,18 @@ Project ref：`zjbkiwatbfujqssibkbs`
 - `authenticated` 可以执行
 - `anon` 没有执行权
 
+### `202609250004_project_finding_workflow.sql`
+
+创建：
+
+- `manage_finding(...)`：Manager 指派负责人、调整期限和风险
+- `transition_finding_status(...)`：按角色和状态机执行开始整改、提交复核、关闭与重开
+- `add_finding_follow_up(...)`：在事务中追加跟进、登记整改照片并可提交复核
+- `private.can_delete_unlinked_follow_up_object(text)`：只允许上传者清理尚未关联的失败上传对象
+- 私有整改照片的失败上传清理 Storage policy
+
+该 migration 已于 2026-09-25 正式执行。复核确认 4 个函数均为 `SECURITY DEFINER`，`authenticated` 具有执行权，相关 Storage policy 只授予登录用户。
+
 ## 7. 权限规则
 
 ### Inspector
@@ -264,14 +287,15 @@ Project ref：`zjbkiwatbfujqssibkbs`
 - Manager 也不能读取其他人的 DRAFT。
 - 提交后，同项目成员可以读取正式记录。
 - 普通客户端不能直接改变 finding 正式状态。
-- 可以为未关闭问题追加跟进记录。
+- 被指派的 Inspector 可以开始整改、追加跟进并提交复核。
+- 未指派给自己的 Inspector 不能改变 finding 或追加跟进。
 
 ### Manager
 
 - 可以查看项目和已提交的团队记录。
-- 可以管理项目成员。
+- 可以创建、修改、归档项目并管理 Inspector 成员。
 - 不能偷看其他巡检员尚未提交的草稿。
-- 后续应通过受控 RPC 执行指派、关闭、重开等状态变化。
+- 通过受控 RPC 指派、调整风险/期限、关闭和重开 finding。
 
 ## 8. 关键文件
 
@@ -328,7 +352,19 @@ src/app/inspections/[id]/page.tsx
   巡检详情、finding、照片检测框、审计事件和报告归档。
 
 src/app/api/projects/route.ts
-  返回当前用户可访问的 ACTIVE 项目。
+  GET 返回当前用户可访问的 ACTIVE 项目；POST 仅允许 Manager 创建项目。
+
+src/app/projects/ 和 src/app/api/projects/[id]/
+  项目列表/详情、资料维护、归档，以及按邮箱添加和移除 Inspector 成员。
+
+src/app/findings/ 和 src/app/api/findings/
+  finding Dashboard、详情、筛选，以及指派、状态转换和跟进 API。
+
+src/components/finding-workflow-panel.tsx
+  Manager 管理和 Inspector 整改操作面板；包括私有跟进照片直传与失败清理。
+
+src/lib/project-queries.ts 和 src/lib/finding-queries.ts
+  依赖 Supabase RLS 的服务端项目/finding 查询与页面 DTO。
 
 src/app/api/inspections/drafts/route.ts
   创建受保护云端草稿。
@@ -340,7 +376,7 @@ src/app/api/inspections/route.ts
   当前账号可读取的正式巡检列表。
 
 supabase/migrations/
-  已部署数据库结构、RLS、Storage policy 和提交 RPC。
+  已部署数据库结构、RLS、Storage policy、正式提交 RPC 和 finding 整改工作流 RPC。
 
 docs/COLLABORATION_SYSTEM_DESIGN.md
   多人协作、权限矩阵、finding 状态机和 Dashboard 设计。
@@ -416,9 +452,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
   - `/api/inspections/drafts`
   - `/api/inspections`
   - `/api/inspections/[id]`
-- 生产构建还包含 `/inspections` 和 `/inspections/[id]`。
-- 匿名访问三个新增云端接口都返回 HTTP 401。
-- Supabase 三个 migration 均已执行。
+- 生产构建还包含 `/inspections`、`/inspections/[id]`、`/projects`、`/projects/[id]`、`/findings` 和 `/findings/[id]`，以及对应项目/整改 API。
+- 匿名访问 finding 列表/详情、项目创建和状态转换接口均返回 HTTP 401。
+- Supabase 四个 migration 均已执行。
 - 9 张业务表全部启用 RLS。
 - 两个 Storage Bucket 都是 private。
 - 正式提交和失败清理 RPC 已在系统表中验证存在和权限。
@@ -426,13 +462,14 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 - 正式 PDF 已使用真实本地巡检记录完成浏览器下载；3 页 A4 报告经 Poppler 渲染确认中文、检测框、页眉页脚和签字区无溢出。
 - 云端列表已在真实登录会话中验证空状态；不存在或不可见的详情 UUID 会进入统一中文 404。
 - 匿名访问正式记录列表和详情 GET API 均返回 HTTP 401。
+- 真实 Inspector 会话已打开 `/projects` 和 `/findings`：只能看到 Inspector 权限，空状态和筛选正确，未暴露 Manager 操作。
+- 第四个 migration 的 4 个函数和失败上传清理 policy 已在系统目录复核；综合权限查询返回 `all_permissions_verified = true`。
 
 ## 12. 当前已知限制
 
-- 当前没有保留测试账号、Manager、项目或项目成员测试数据。
+- 当前只有用于页面检查的 Inspector 登录会话；没有 Manager、项目、正式巡检或 finding 测试数据。
 - 因此最新云端提交链路尚未使用真实账号完成一次完整照片提交验收。
-- 尚无项目 finding Dashboard。
-- 尚未实现 finding 指派、处理中、待复核、关闭和重开的服务端 RPC。
+- 项目管理和 finding 整改代码已完成，但因缺少 Manager、项目和正式 finding 数据，尚未完成真实多角色事务验收。
 - 浏览器端 PDF 已完成，但尚未上传到私有 `inspection-reports` Bucket，也未写入 `generated_reports`；Word 尚未实现。
 - LLM 看不到原图，只能使用检测 JSON 和文字备注。
 - 当前 YOLO 模型主要识别 PPE，不能可靠判断通道堵塞、电缆布置或材料堆放关系。
@@ -471,22 +508,20 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 4. Manager 可以查看已提交记录，但不能查看 A 的 DRAFT。
 5. 人为制造一次提交失败，确认照片和草稿被清理。
 
-### 第五步：验收正式记录界面
+### 第五步：验收正式记录与整改界面
 
 1. 确认 Inspector A 提交后列表出现新记录。
 2. 确认 Inspector B 只能读取同项目正式记录。
 3. 确认详情照片 signed URL、detection 框、finding 证据和审计事件正确。
-4. 再开发项目 Dashboard 和整改状态机。
+4. Manager 指派 finding、设置截止日期和风险；Inspector 开始整改、上传照片并提交复核。
+5. Manager 关闭和重开 finding，确认审计事件完整、其他 Inspector 无权操作。
 
 ## 14. 推荐的后续开发顺序
 
-1. 多角色真实验收。
-2. finding Dashboard。
-3. finding 状态转换 RPC 和审计事件。
-4. 跟进评论与整改照片。
-5. PDF 云端归档和报告历史下载；如演示确有需要再增加 Word。
-6. Vercel 环境变量和正式部署验收。
-7. 真实施工照片评估、阈值调整和自有模型训练。
+1. 用一个 Manager 和两个 Inspector 完成项目、提交、RLS 与整改闭环真实验收。
+2. PDF 云端归档和报告历史下载；如演示确有需要再增加 Word。
+3. Vercel 环境变量和正式部署验收。
+4. 真实施工照片评估、阈值调整和自有模型训练。
 
 不要优先做 LangChain、向量数据库或多 Agent。除非新的需求明确需要知识检索、后台长期任务或多工具自治，否则这些基础设施会增加复杂度，却不会直接完成当前演示闭环。
 
@@ -567,8 +602,8 @@ git status --short
 请先完整阅读 AGENTS.md、TEAM_HANDOFF.md、AI_HANDOFF.md、
 docs/COLLABORATION_SYSTEM_DESIGN.md 和 docs/ADR-001-CLOUD-STACK.md。
 检查 git status，保护已有改动，并以 origin/main 最新提交为基线。
-下一步先建立 Manager + 两个 Inspector + 一个项目，真实验收云端提交、记录列表/详情和 RLS，
-然后实现 finding Dashboard、整改状态 RPC 以及 PDF 私有归档，
+下一步先建立 Manager + 两个 Inspector + 一个项目，真实验收云端提交、记录列表/详情、RLS 和已实现的 finding 整改闭环，
+然后实现 PDF 私有归档并完成 Vercel 演示部署，
 不要先引入 LangChain、向量数据库或多 Agent，也不要把图片发送给当前 LLM 网关。
 每个阶段完成后运行 lint、TypeScript、build 和 git diff --check，并更新交接文档。
 ```
