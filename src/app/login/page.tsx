@@ -32,8 +32,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <div className="relative max-w-xl">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-300">Safer sites. Clearer decisions.</p>
           <h1 className="mt-5 text-4xl font-bold leading-tight tracking-tight xl:text-5xl">
-            让每一次现场巡检，
-            <span className="text-amber-300">都有证据可追溯。</span>
+            <span className="block">让每一次现场巡检</span>
+            <span className="block text-amber-300">都有证据可追溯</span>
           </h1>
           <p className="mt-6 max-w-lg text-base leading-8 text-slate-300">
             从现场照片识别、AI 问题草拟到人工复核和云端归档，将分散的巡检信息汇聚成清晰的整改闭环。
