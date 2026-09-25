@@ -220,6 +220,19 @@ Zod 校验后的巡检问题草稿
 - 使用本地 Noto Sans SC 字体，中文可以嵌入 PDF；字体许可证保存在 `public/fonts/OFL.txt`。
 - 已通过真实 IndexedDB 巡检记录完成浏览器下载，并使用 Poppler 渲染检查全部页面。
 
+### 3.14 云端正式巡检列表与详情
+
+- 新增 `/inspections` 正式巡检列表，只展示当前账号通过 RLS 有权读取的 `SUBMITTED` 和 `ARCHIVED` 记录。
+- 列表按巡检显示项目、位置、巡检员、提交时间、正式报告编号，以及 finding、未关闭问题、高风险问题、照片和报告数量。
+- 新增 `/inspections/[id]` 详情页，显示正式摘要、原始备注、finding、负责人、截止日期、证据、审计事件、照片和已归档报告。
+- 私有照片和报告不会公开存储；服务端读取数据库路径后生成 10 分钟有效的 Supabase signed URL，再返回给页面。
+- 证据照片会按数据库中的 detection 坐标恢复 YOLO 检测框；被 finding 精确引用的 detection 使用黄色高亮，违规候选使用红色，其余检测使用蓝色。
+- 被人工排除的 detection 不会绘制，并会在照片卡片中显示排除数量。
+- 查询只返回页面需要的 DTO，不把 Storage `storage_key` 暴露给浏览器。
+- 非法 UUID、无权限记录、不存在记录和非正式草稿统一进入中文 404，避免泄露记录是否存在。
+- 新增同源只读 API：`GET /api/inspections` 和 `GET /api/inspections/[id]`；两者都会独立验证 Supabase 登录状态。
+- 工作台导航已接入“新建巡检”和“云端记录”，并提供适配窄屏的顶部移动导航。
+
 ## 4. 关键文件
 
 ```text
@@ -256,6 +269,18 @@ src/lib/cloud-inspection.ts
 src/lib/cloud-inspection-schema.ts
   云端草稿和正式提交载荷的共享 Zod Schema。
 
+src/lib/cloud-inspection-queries.ts
+  服务端正式记录查询层；依赖 Supabase RLS，聚合列表数据并为私有照片和报告生成短期 signed URL。
+
+src/app/inspections/page.tsx
+  云端正式巡检列表、汇总卡片和空状态。
+
+src/app/inspections/[id]/page.tsx
+  正式巡检详情、finding、证据检测框、审计事件和报告归档。
+
+src/app/inspections/[id]/not-found.tsx
+  无权限、不存在或非正式记录的统一中文 404。
+
 docs/COLLABORATION_SYSTEM_DESIGN.md
   多人协作产品规则、权限矩阵、数据模型、状态机、页面与 API 设计。
 
@@ -278,7 +303,10 @@ src/app/api/inspections/drafts/route.ts
   创建属于当前用户和项目的受保护云端草稿。
 
 src/app/api/inspections/[id]/route.ts
-  调用正式提交事务；DELETE 用于清理失败上传产生的 Storage 对象和草稿。
+  GET 返回有权读取的正式巡检详情；POST 调用正式提交事务；DELETE 清理失败上传产生的 Storage 对象和草稿。
+
+src/app/api/inspections/route.ts
+  返回当前账号通过 RLS 有权读取的正式巡检列表。
 
 src/lib/supabase/client.ts
   浏览器端 Supabase client；只使用公开的 Project URL 和 Publishable key。
@@ -290,7 +318,7 @@ src/lib/supabase/proxy.ts
   刷新 Supabase 会话，并执行登录页与工作台之间的访问控制。
 
 src/proxy.ts
-  Next.js 16 Proxy 入口；当前匹配 `/` 和 `/login`。
+  Next.js 16 Proxy 入口；当前匹配 `/`、`/login` 和 `/inspections/:path*`。
 
 src/app/login/page.tsx
   邮箱密码登录和巡检员注册页面。
@@ -419,6 +447,10 @@ git status --short
 - 第三个 migration 已正式执行，`submit_inspection_draft` 与 `abort_inspection_draft` 均已复核为 `SECURITY DEFINER`，且 `authenticated` 角色具有执行权。
 - 云端提交新增后，ESLint、TypeScript、`git diff --check` 和包含 3 个新 API 路由的 `npm run build` 全部通过。
 - 正式 PDF 功能新增后，ESLint、TypeScript 和 `npm run build` 通过；浏览器真实下载生成 3 页 A4 报告，中文、人工审核结果、YOLO 检测框、页眉页脚与签字区均经 Poppler 渲染检查。
+- 云端正式巡检列表已在真实登录会话中打开；当前账号没有正式数据时，汇总数字和空状态正确显示。
+- 不存在的正式巡检 UUID 会进入统一中文 404；无权限、不存在和非正式草稿不会通过详情页暴露差异。
+- 匿名 GET `/api/inspections` 和 GET `/api/inspections/{uuid}` 均返回 HTTP 401。
+- 最新生产构建包含 `/inspections`、`/inspections/[id]`、`/api/inspections` 和扩展后的 `/api/inspections/[id]`，ESLint、TypeScript 与构建均通过。
 
 ## 8. 安全与真实性约束
 
@@ -443,9 +475,9 @@ git status --short
 - 小目标、遮挡、逆光、夜间和模糊图片可能降低准确率。
 - LLM 只接收按照片分组的检测 JSON，仍然看不到原始图片。
 - 已支持浏览器端正式 PDF；Word 报告和已生成报告的云端归档尚未实现。
-- 巡检历史目前只保存在当前浏览器的 IndexedDB 中，不支持跨浏览器、跨设备或团队同步。
+- 未提交巡检历史目前只保存在当前浏览器的 IndexedDB 中；已正式提交记录可以通过云端记录页跨设备读取。
 - 历史列表会读取包含照片 Blob 的完整记录；若记录数量和照片体积大幅增加，需要拆分摘要与照片存储。
-- 云端正式提交已经实现，但尚未实现正式记录列表、跨设备载入或 finding Dashboard。
+- 云端正式提交、正式记录列表与详情已经实现；尚未实现 finding Dashboard 和在详情页继续整改的交互。
 - 当前没有测试账号和项目成员数据，因此本阶段只完成了 migration 实际部署、权限复核和生产构建；仍需用 Manager + Inspector 账号执行一次真实照片端到端验收。
 - 当前没有保留测试账号；Manager 提升和多角色权限隔离仍需后续重新创建测试账号验收。
 
@@ -497,13 +529,13 @@ git pull --ff-only origin main
 
 ## 12. 推荐的下一阶段
 
-优先完成“多角色权限和正式记录读取”：
+优先完成“多角色权限和问题整改闭环”：
 
 1. Supabase 项目、本地环境变量和 client 封装已经完成。
 2. User、Project、ProjectMember 数据结构和第一阶段 RLS 已经部署。
 3. 登录、注册、受保护路由和服务端权限校验已通过单账号验收；正式提交 RPC 也已经部署。
 4. 保留 IndexedDB 作为未提交草稿层，不要直接删除当前本地历史能力。
-5. 下一步使用两个 Inspector 和一个 Manager 验证项目权限隔离、正式提交、照片私有读取和失败清理。
+5. 正式记录列表与详情已经完成；下一步使用两个 Inspector 和一个 Manager 验证项目权限隔离、正式提交、照片 signed URL 私有读取和失败清理。
 
 当前照片状态结构：
 
@@ -550,16 +582,15 @@ type SelectedPhoto = {
 
 建议顺序：
 
-1. 创建首个 Manager、项目和两个 Inspector 成员，端到端验收正式提交与 RLS 隔离。
-2. 实现云端正式巡检列表和详情页，并用签名 URL 显示私有证据照片。
-3. 验证退出、刷新 token、删除或禁用账号后的会话行为。
-4. 实现项目 finding Dashboard 和整改状态机。
-5. 把浏览器生成的 PDF 上传到私有 `inspection-reports` Bucket，并在 `generated_reports` 记录版本和对象路径。
-6. 如黑客松演示确有需要，再补充 Word 导出。
-7. 使用现场照片评估置信度阈值和误检率。
-8. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
-9. 训练许可证清晰的自有模型。
-10. 部署后检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
+1. 创建首个 Manager、项目和两个 Inspector 成员，端到端验收正式提交、记录列表/详情与 RLS 隔离。
+2. 验证退出、刷新 token、删除或禁用账号后的会话行为。
+3. 实现项目 finding Dashboard 和整改状态机。
+4. 把浏览器生成的 PDF 上传到私有 `inspection-reports` Bucket，并在 `generated_reports` 记录版本和对象路径。
+5. 如黑客松演示确有需要，再补充 Word 导出。
+6. 使用现场照片评估置信度阈值和误检率。
+7. 收集并标注 `BLOCKED_ACCESS`、`UNSAFE_CABLE`、`IMPROPER_STORAGE` 数据。
+8. 训练许可证清晰的自有模型。
+9. 部署后检查 ONNX 模型、WASM 资源、Supabase 和网关环境变量。
 
 ## 14. 给后续 AI 的工作要求
 

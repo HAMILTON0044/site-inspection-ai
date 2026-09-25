@@ -6,7 +6,7 @@
 远程仓库：<https://github.com/HAMILTON0044/site-inspection-ai>  
 交接基线：以 `origin/main` 最新提交为准（`6cb63d3` 之后已加入企业级前端第一阶段）
 
-> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 本地/云端保存 → 正式 PDF 报告”的基础闭环，下一阶段重点是多角色真实验收、正式记录 Dashboard 和报告云端归档。
+> 一句话状态：项目已经完成“登录 → 多照片浏览器端 YOLO 识别 → 指定 LLM 生成问题草稿 → 人工编辑与审核 → 本地/云端保存 → 正式 PDF 报告 → 云端正式记录列表与详情”的基础闭环，下一阶段重点是多角色真实验收、finding 整改 Dashboard 和报告云端归档。
 
 ## 1. 交接时项目处于什么阶段
 
@@ -23,11 +23,11 @@
 9. 审核完成后，照片进入 Supabase 私有 Storage，正式数据通过数据库事务写入 PostgreSQL。
 10. 登录页和巡检工作台已完成第一阶段企业视觉改造：统一品牌、侧边导航、顶部状态栏、三步巡检进度和宽屏工作区。
 11. 全部 finding 完成人工审核后，可下载带证据照片和 YOLO 检测框的正式 A4 PDF 报告。
+12. 提交后的巡检会进入云端记录列表，并可在详情页查看私有证据照片、检测框、finding、审计事件和报告归档。
 
 仍未完成的主要部分：
 
 - Manager/Inspector 多账号真实权限验收。
-- 云端正式巡检列表与详情页。
 - 项目 finding Dashboard 和整改闭环界面。
 - Word 报告和 PDF 云端归档（浏览器端正式 PDF 已完成）。
 - Vercel 正式部署后的整体验收。
@@ -191,6 +191,16 @@ finding 草稿
 - 末页包含巡检员/Manager 签名区和 AI 辅助生成免责声明。
 - 中文字体随项目提供，许可证见 `public/fonts/OFL.txt`。
 
+### 5.8 云端正式记录读取
+
+- `/inspections` 只列出当前账号通过 Supabase RLS 有权读取的 `SUBMITTED` 与 `ARCHIVED` 巡检。
+- 列表汇总 finding、未关闭、高风险、照片和报告数量，并支持进入 `/inspections/[id]`。
+- 详情显示项目、巡检员、原始备注、正式 finding、证据、审计事件、私有照片和已归档报告。
+- 服务端为私有照片和报告生成 10 分钟 signed URL，浏览器不会收到原始 Storage 路径。
+- 证据照片按数据库 detection 坐标绘制 YOLO 框；finding 引用框黄色高亮，违规红色，其余蓝色，人工排除项不绘制。
+- 无权限、不存在、非法 UUID 或仍为草稿的记录统一显示中文 404，避免泄露记录存在性。
+- `GET /api/inspections` 与 `GET /api/inspections/[id]` 均独立校验登录状态，匿名请求返回 401。
+
 ## 6. Supabase 当前状态
 
 Supabase 项目：`site-inspection-ai`  
@@ -308,6 +318,15 @@ src/lib/cloud-inspection.ts
 src/lib/cloud-inspection-schema.ts
   云端提交的共享 Zod Schema。
 
+src/lib/cloud-inspection-queries.ts
+  服务端正式记录读取、RLS 查询、列表聚合和私有对象 signed URL。
+
+src/app/inspections/page.tsx
+  云端正式巡检列表和汇总。
+
+src/app/inspections/[id]/page.tsx
+  巡检详情、finding、照片检测框、审计事件和报告归档。
+
 src/app/api/projects/route.ts
   返回当前用户可访问的 ACTIVE 项目。
 
@@ -315,7 +334,10 @@ src/app/api/inspections/drafts/route.ts
   创建受保护云端草稿。
 
 src/app/api/inspections/[id]/route.ts
-  POST 正式提交；DELETE 失败清理。
+  GET 正式记录详情；POST 正式提交；DELETE 失败清理。
+
+src/app/api/inspections/route.ts
+  当前账号可读取的正式巡检列表。
 
 supabase/migrations/
   已部署数据库结构、RLS、Storage policy 和提交 RPC。
@@ -378,7 +400,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 10. 保存一次本地历史。
 11. 点击“下载正式 PDF 报告”，展示问题页和带检测框的证据照片页。
 12. 选择项目并提交云端。
-13. 后续在 Dashboard 中查看正式记录；此页面尚待实现。
+13. 打开“云端记录”，展示刚提交的正式记录和带检测框的详情页。
 
 ## 11. 已完成的验证
 
@@ -392,7 +414,9 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
   - `/api/analyze`
   - `/api/projects`
   - `/api/inspections/drafts`
+  - `/api/inspections`
   - `/api/inspections/[id]`
+- 生产构建还包含 `/inspections` 和 `/inspections/[id]`。
 - 匿名访问三个新增云端接口都返回 HTTP 401。
 - Supabase 三个 migration 均已执行。
 - 9 张业务表全部启用 RLS。
@@ -400,12 +424,13 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 - 正式提交和失败清理 RPC 已在系统表中验证存在和权限。
 - 多照片识别、误检排除、LLM 证据分组、finding 编辑、证据高亮和本地历史恢复均做过浏览器端验收。
 - 正式 PDF 已使用真实本地巡检记录完成浏览器下载；3 页 A4 报告经 Poppler 渲染确认中文、检测框、页眉页脚和签字区无溢出。
+- 云端列表已在真实登录会话中验证空状态；不存在或不可见的详情 UUID 会进入统一中文 404。
+- 匿名访问正式记录列表和详情 GET API 均返回 HTTP 401。
 
 ## 12. 当前已知限制
 
 - 当前没有保留测试账号、Manager、项目或项目成员测试数据。
 - 因此最新云端提交链路尚未使用真实账号完成一次完整照片提交验收。
-- 尚无云端正式记录列表和详情页。
 - 尚无项目 finding Dashboard。
 - 尚未实现 finding 指派、处理中、待复核、关闭和重开的服务端 RPC。
 - 浏览器端 PDF 已完成，但尚未上传到私有 `inspection-reports` Bucket，也未写入 `generated_reports`；Word 尚未实现。
@@ -446,23 +471,22 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 4. Manager 可以查看已提交记录，但不能查看 A 的 DRAFT。
 5. 人为制造一次提交失败，确认照片和草稿被清理。
 
-### 第五步：开发正式记录界面
+### 第五步：验收正式记录界面
 
-1. 新增云端巡检列表。
-2. 新增巡检详情和私有照片签名 URL。
-3. 显示 finding、证据 detection 和审计事件。
+1. 确认 Inspector A 提交后列表出现新记录。
+2. 确认 Inspector B 只能读取同项目正式记录。
+3. 确认详情照片 signed URL、detection 框、finding 证据和审计事件正确。
 4. 再开发项目 Dashboard 和整改状态机。
 
 ## 14. 推荐的后续开发顺序
 
 1. 多角色真实验收。
-2. 云端巡检列表与详情。
-3. finding Dashboard。
-4. finding 状态转换 RPC 和审计事件。
-5. 跟进评论与整改照片。
-6. PDF 云端归档和报告历史下载；如演示确有需要再增加 Word。
-7. Vercel 环境变量和正式部署验收。
-8. 真实施工照片评估、阈值调整和自有模型训练。
+2. finding Dashboard。
+3. finding 状态转换 RPC 和审计事件。
+4. 跟进评论与整改照片。
+5. PDF 云端归档和报告历史下载；如演示确有需要再增加 Word。
+6. Vercel 环境变量和正式部署验收。
+7. 真实施工照片评估、阈值调整和自有模型训练。
 
 不要优先做 LangChain、向量数据库或多 Agent。除非新的需求明确需要知识检索、后台长期任务或多工具自治，否则这些基础设施会增加复杂度，却不会直接完成当前演示闭环。
 
@@ -543,8 +567,8 @@ git status --short
 请先完整阅读 AGENTS.md、TEAM_HANDOFF.md、AI_HANDOFF.md、
 docs/COLLABORATION_SYSTEM_DESIGN.md 和 docs/ADR-001-CLOUD-STACK.md。
 检查 git status，保护已有改动，并以 origin/main 最新提交为基线。
-下一步先建立 Manager + 两个 Inspector + 一个项目，真实验收云端提交和 RLS，
-然后实现云端正式巡检列表/详情以及 PDF 私有归档，
+下一步先建立 Manager + 两个 Inspector + 一个项目，真实验收云端提交、记录列表/详情和 RLS，
+然后实现 finding Dashboard、整改状态 RPC 以及 PDF 私有归档，
 不要先引入 LangChain、向量数据库或多 Agent，也不要把图片发送给当前 LLM 网关。
 每个阶段完成后运行 lint、TypeScript、build 和 git diff --check，并更新交接文档。
 ```

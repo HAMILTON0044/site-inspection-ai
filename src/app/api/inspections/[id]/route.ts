@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CloudInspectionPayloadSchema } from "@/lib/cloud-inspection-schema";
+import { getCloudInspectionDetail } from "@/lib/cloud-inspection-queries";
 import { createClient } from "@/lib/supabase/server";
 
 type InspectionRouteContext = {
@@ -9,6 +10,25 @@ type InspectionRouteContext = {
 async function getInspectionId(context: InspectionRouteContext) {
   const { id } = await context.params;
   return z.uuid().safeParse(id);
+}
+
+export async function GET(
+  _request: Request,
+  context: InspectionRouteContext,
+) {
+  const idResult = await getInspectionId(context);
+
+  if (!idResult.success) {
+    return Response.json({ error: "巡检 ID 无效。" }, { status: 400 });
+  }
+
+  const result = await getCloudInspectionDetail(idResult.data);
+
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: result.status });
+  }
+
+  return Response.json({ inspection: result.data });
 }
 
 export async function POST(

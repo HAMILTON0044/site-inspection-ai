@@ -1,7 +1,11 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 type ProductShellProps = {
   children: ReactNode;
+  activeItem?: "new" | "records";
+  pageLabel?: string;
+  title?: string;
 };
 
 type IconName =
@@ -91,7 +95,18 @@ const upcomingItems: Array<{ label: string; icon: IconName }> = [
   { label: "团队与项目", icon: "team" },
 ];
 
-export function ProductShell({ children }: ProductShellProps) {
+function navigationClass(active: boolean) {
+  return active
+    ? "flex items-center gap-3 rounded-xl bg-white/10 px-3 py-3 text-sm font-semibold text-white ring-1 ring-white/10"
+    : "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white";
+}
+
+export function ProductShell({
+  children,
+  activeItem = "new",
+  pageLabel = "新建巡检",
+  title = "AI 现场安全巡检工作台",
+}: ProductShellProps) {
   return (
     <div className="min-h-screen bg-[#f4f6f8] text-slate-950">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-slate-800 bg-[#0b1728] text-slate-200 lg:flex">
@@ -114,21 +129,23 @@ export function ProductShell({ children }: ProductShellProps) {
             工作台
           </p>
           <div className="mt-3 space-y-1">
-            <a
-              href="#workspace"
-              className="flex items-center gap-3 rounded-xl bg-white/10 px-3 py-3 text-sm font-semibold text-white ring-1 ring-white/10"
-            >
+            <Link href="/" className={navigationClass(activeItem === "new")}>
               <Icon name="inspection" />
               新建智能巡检
-              <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
-            </a>
-            <a
-              href="#records"
-              className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white"
+              {activeItem === "new" && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
+              )}
+            </Link>
+            <Link
+              href="/inspections"
+              className={navigationClass(activeItem === "records")}
             >
               <Icon name="dashboard" />
               巡检记录
-            </a>
+              {activeItem === "records" && (
+                <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
+              )}
+            </Link>
           </div>
 
           <p className="mt-8 px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -171,13 +188,39 @@ export function ProductShell({ children }: ProductShellProps) {
             <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
               <span>巡检管理</span>
               <span aria-hidden="true">/</span>
-              <span className="text-slate-800">新建巡检</span>
+              <span className="text-slate-800">{pageLabel}</span>
             </div>
             <p className="mt-1 truncate text-sm font-semibold text-slate-900 sm:text-base">
-              AI 现场安全巡检工作台
+              {title}
             </p>
           </div>
         </header>
+
+        <nav
+          aria-label="移动端主导航"
+          className="flex gap-2 border-b border-slate-200 bg-white px-4 py-3 lg:hidden"
+        >
+          <Link
+            href="/"
+            className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+              activeItem === "new"
+                ? "bg-slate-950 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            新建巡检
+          </Link>
+          <Link
+            href="/inspections"
+            className={`rounded-lg px-3 py-2 text-sm font-semibold ${
+              activeItem === "records"
+                ? "bg-slate-950 text-white"
+                : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            云端记录
+          </Link>
+        </nav>
 
         {children}
       </div>
