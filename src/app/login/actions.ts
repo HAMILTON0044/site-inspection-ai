@@ -33,7 +33,7 @@ export async function signIn(formData: FormData) {
     );
   }
 
-  redirect("/");
+  redirect("/workspace");
 }
 
 export async function signUp(formData: FormData) {
@@ -75,7 +75,7 @@ export async function signUp(formData: FormData) {
   }
 
   if (data.session) {
-    redirect("/");
+    redirect("/workspace");
   }
 
   loginRedirect("message", "auth.message.checkEmail");

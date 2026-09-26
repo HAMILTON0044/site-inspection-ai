@@ -60,7 +60,7 @@ export default async function ReportsPage() {
               {l("完成巡检审核并提交云端后，在新建巡检工作区生成 PDF，即可在这里查看报告历史。", "After reviewing and submitting an inspection, generate its PDF in the inspection workspace to add it to this archive.")}
             </p>
             <Link
-              href="/"
+              href="/workspace"
               className="mt-5 inline-flex rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               {l("新建巡检", "New inspection")}

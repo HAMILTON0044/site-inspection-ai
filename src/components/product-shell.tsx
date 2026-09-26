@@ -130,7 +130,7 @@ export function ProductShell({
             {t("nav.workspace")}
           </p>
           <div className="mt-3 space-y-1">
-            <Link href="/" className={navigationClass(activeItem === "new")}>
+            <Link href="/workspace" className={navigationClass(activeItem === "new")}>
               <Icon name="inspection" />
               {t("nav.newInspection")}
               {activeItem === "new" && (
@@ -219,7 +219,7 @@ export function ProductShell({
           className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-3 lg:hidden"
         >
           <Link
-            href="/"
+            href="/workspace"
             className={`rounded-lg px-3 py-2 text-sm font-semibold ${
               activeItem === "new"
                 ? "bg-slate-950 text-white"

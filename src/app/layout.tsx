@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AuthStatus } from "@/components/auth-status";
+import { AuthStatusVisibility } from "@/components/auth-status-visibility";
 import { LanguageProvider } from "@/components/language-provider";
 import { LanguageToggle } from "@/components/language-toggle";
 import { getTranslator } from "@/lib/i18n-server";
@@ -28,7 +29,7 @@ export default async function RootLayout({
       <body>
         <LanguageProvider initialLocale={locale}>
           <LanguageToggle />
-          <AuthStatus />
+          <AuthStatusVisibility><AuthStatus /></AuthStatusVisibility>
           {children}
         </LanguageProvider>
       </body>

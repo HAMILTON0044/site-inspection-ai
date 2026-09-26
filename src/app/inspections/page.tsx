@@ -151,7 +151,7 @@ export default async function InspectionsPage() {
               </p>
             </div>
             <Link
-              href="/"
+              href="/workspace"
               className="inline-flex w-fit items-center justify-center rounded-xl bg-amber-400 px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-amber-300"
             >
               + {l("新建智能巡检", "New AI Inspection")}
@@ -190,7 +190,7 @@ export default async function InspectionsPage() {
               {l("完成照片识别、AI 分析和人工审核后，选择所属项目并提交到云端，正式记录会显示在这里。", "Complete photo detection, AI analysis and human review, then select a project and submit to the cloud. The official record will appear here.")}
             </p>
             <Link
-              href="/"
+              href="/workspace"
               className="mt-5 inline-flex rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               {l("开始第一次巡检", "Start your first inspection")}

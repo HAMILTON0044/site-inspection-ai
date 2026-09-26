@@ -27,7 +27,7 @@ export default function InspectionNotFound() {
               返回巡检记录
             </Link>
             <Link
-              href="/"
+              href="/workspace"
               className="rounded-xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               新建巡检

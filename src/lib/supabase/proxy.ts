@@ -54,7 +54,7 @@ export async function updateSession(request: NextRequest) {
 
   if (isLoggedIn && isLoginPage) {
     const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = "/";
+    homeUrl.pathname = "/workspace";
     homeUrl.search = "";
 
     return copyResponseCookies(response, NextResponse.redirect(homeUrl));
