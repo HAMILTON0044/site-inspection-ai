@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 import type { InspectionAnalysis } from "@/lib/schemas";
+import { categoryLabel, riskLabel } from "@/lib/i18n";
 
 type Finding = InspectionAnalysis["findings"][number];
 
@@ -26,25 +28,19 @@ type FindingEditorProps = {
   onCancel: () => void;
 };
 
-const categoryOptions: Array<{
-  value: Finding["category"];
-  label: string;
-}> = [
-  { value: "BLOCKED_ACCESS", label: "通道或出口堵塞" },
-  { value: "UNSAFE_CABLE", label: "电缆安全问题" },
-  { value: "MISSING_PPE", label: "缺少个人防护装备" },
-  { value: "IMPROPER_STORAGE", label: "材料堆放不规范" },
+const categories: Finding["category"][] = [
+  "BLOCKED_ACCESS",
+  "UNSAFE_CABLE",
+  "MISSING_PPE",
+  "IMPROPER_STORAGE",
 ];
 
-const riskOptions: Array<{
-  value: Finding["risk_level"];
-  label: string;
-}> = [
-  { value: "LOW", label: "低风险" },
-  { value: "MEDIUM", label: "中风险" },
-  { value: "HIGH", label: "高风险" },
-  { value: "CRITICAL", label: "严重风险" },
-  { value: "UNCONFIRMED", label: "风险待确认" },
+const risks: Finding["risk_level"][] = [
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "CRITICAL",
+  "UNCONFIRMED",
 ];
 
 const inputClassName =
@@ -57,6 +53,7 @@ export function FindingEditor({
   onSave,
   onCancel,
 }: FindingEditorProps) {
+  const { locale, t } = useLanguage();
   const [value, setValue] = useState(initialValue);
   const [uncertaintyText, setUncertaintyText] = useState(
     initialValue.uncertainty.join("\n"),
@@ -97,7 +94,7 @@ export function FindingEditor({
     >
       <div className="grid gap-5 md:grid-cols-2">
         <label className="text-sm font-semibold text-slate-700">
-          问题类别
+          {t("editor.category")}
           <select
             value={value.category}
             onChange={(event) =>
@@ -108,16 +105,16 @@ export function FindingEditor({
             }
             className={inputClassName}
           >
-            {categoryOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {categoryLabel(locale, category)}
               </option>
             ))}
           </select>
         </label>
 
         <label className="text-sm font-semibold text-slate-700">
-          风险等级
+          {t("editor.risk")}
           <select
             value={value.risk_level}
             onChange={(event) =>
@@ -128,9 +125,9 @@ export function FindingEditor({
             }
             className={inputClassName}
           >
-            {riskOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
+            {risks.map((risk) => (
+              <option key={risk} value={risk}>
+                {riskLabel(locale, risk)}
               </option>
             ))}
           </select>
@@ -138,7 +135,7 @@ export function FindingEditor({
       </div>
 
       <label className="mt-5 block text-sm font-semibold text-slate-700">
-        问题标题
+        {t("editor.title")}
         <input
           required
           value={value.title}
@@ -153,7 +150,7 @@ export function FindingEditor({
       </label>
 
       <label className="mt-5 block text-sm font-semibold text-slate-700">
-        问题描述
+        {t("editor.description")}
         <textarea
           required
           rows={3}
@@ -169,7 +166,7 @@ export function FindingEditor({
       </label>
 
       <label className="mt-5 block text-sm font-semibold text-slate-700">
-        可见证据
+        {t("editor.visibleEvidence")}
         <textarea
           required
           rows={3}
@@ -186,7 +183,7 @@ export function FindingEditor({
 
       <fieldset className="mt-5">
         <legend className="text-sm font-semibold text-slate-700">
-          证据照片（可多选）
+          {t("editor.evidencePhotos")}
         </legend>
         {photoNames.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-2">
@@ -210,15 +207,15 @@ export function FindingEditor({
             ))}
           </div>
         ) : (
-          <p className="mt-2 text-sm text-slate-500">当前没有已选照片。</p>
+          <p className="mt-2 text-sm text-slate-500">{t("editor.noPhotos")}</p>
         )}
         <p className="mt-2 text-xs text-slate-500">
-          不选择照片时，证据来源将显示为“巡检备注”。
+          {t("editor.noteFallback")}
         </p>
       </fieldset>
 
       <label className="mt-5 block text-sm font-semibold text-slate-700">
-        建议整改措施
+        {t("editor.correctiveAction")}
         <textarea
           required
           rows={3}
@@ -234,7 +231,7 @@ export function FindingEditor({
       </label>
 
       <label className="mt-5 block text-sm font-semibold text-slate-700">
-        待确认事项（每行一项，可留空）
+        {t("editor.uncertainty")}
         <textarea
           rows={3}
           value={uncertaintyText}
@@ -249,7 +246,7 @@ export function FindingEditor({
           onClick={onCancel}
           className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
-          取消
+          {t("common.cancel")}
         </button>
         <button
           type="submit"

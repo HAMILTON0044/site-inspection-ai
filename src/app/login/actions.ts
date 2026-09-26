@@ -15,7 +15,7 @@ export async function signIn(formData: FormData) {
   const password = formData.get("password")?.toString() ?? "";
 
   if (!email || !password) {
-    loginRedirect("error", "请输入邮箱和密码。");
+    loginRedirect("error", "auth.error.missingCredentials");
   }
 
   const supabase = await createClient();
@@ -28,8 +28,8 @@ export async function signIn(formData: FormData) {
     loginRedirect(
       "error",
       error.code === "email_not_confirmed"
-        ? "邮箱尚未验证，请先检查验证邮件。"
-        : "邮箱或密码不正确。",
+        ? "auth.error.emailNotConfirmed"
+        : "auth.error.invalidCredentials",
     );
   }
 
@@ -43,15 +43,15 @@ export async function signUp(formData: FormData) {
   const password = formData.get("password")?.toString() ?? "";
 
   if (displayName.length < 1 || displayName.length > 100) {
-    loginRedirect("error", "姓名需要填写 1 到 100 个字符。");
+    loginRedirect("error", "auth.error.invalidName");
   }
 
   if (!email) {
-    loginRedirect("error", "请输入邮箱。");
+    loginRedirect("error", "auth.error.missingEmail");
   }
 
   if (password.length < 8) {
-    loginRedirect("error", "密码至少需要 8 个字符。");
+    loginRedirect("error", "auth.error.shortPassword");
   }
 
   const supabase = await createClient();
@@ -69,8 +69,8 @@ export async function signUp(formData: FormData) {
     loginRedirect(
       "error",
       error.code === "user_already_exists"
-        ? "该邮箱已经注册，请直接登录。"
-        : "注册失败，请检查邮箱和密码后重试。",
+        ? "auth.error.userExists"
+        : "auth.error.signUpFailed",
     );
   }
 
@@ -78,5 +78,5 @@ export async function signUp(formData: FormData) {
     redirect("/");
   }
 
-  loginRedirect("message", "注册成功，请检查邮箱并完成验证后登录。");
+  loginRedirect("message", "auth.message.checkEmail");
 }

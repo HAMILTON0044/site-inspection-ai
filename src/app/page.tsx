@@ -3,6 +3,7 @@
 import {
   ChangeEvent,
   FormEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -16,6 +17,7 @@ import { CloudSubmission } from "@/components/cloud-submission";
 import { InspectionHistory } from "@/components/inspection-history";
 import { ProductShell } from "@/components/product-shell";
 import { ReportDownload } from "@/components/report-download";
+import { useLanguage } from "@/components/language-provider";
 import {
   loadCloudProjects,
   submitInspectionToCloud,
@@ -28,12 +30,9 @@ import {
   saveInspectionRecord,
   type StoredInspectionRecord,
 } from "@/lib/inspection-store";
-import {
-  detectPpe,
-  type PpeLabel,
-  type VisionDetection,
-} from "@/lib/vision";
+import { detectPpe, type VisionDetection } from "@/lib/vision";
 import { createClient } from "@/lib/supabase/client";
+import { categoryLabel, detectionLabel, riskLabel } from "@/lib/i18n";
 
 type AnalyzeResponse = {
   analysis: InspectionAnalysis;
@@ -61,40 +60,12 @@ type BatchDetectionProgress = {
   currentPhotoName: string;
 };
 
-const categoryLabels: Record<Finding["category"], string> = {
-  BLOCKED_ACCESS: "通道或出口堵塞",
-  UNSAFE_CABLE: "电缆安全问题",
-  MISSING_PPE: "缺少个人防护装备",
-  IMPROPER_STORAGE: "材料堆放不规范",
-};
-
-const riskLabels: Record<Finding["risk_level"], string> = {
-  LOW: "低风险",
-  MEDIUM: "中风险",
-  HIGH: "高风险",
-  CRITICAL: "严重风险",
-  UNCONFIRMED: "风险待确认",
-};
-
 const riskStyles: Record<Finding["risk_level"], string> = {
   LOW: "bg-emerald-100 text-emerald-800",
   MEDIUM: "bg-amber-100 text-amber-800",
   HIGH: "bg-orange-100 text-orange-800",
   CRITICAL: "bg-red-100 text-red-800",
   UNCONFIRMED: "bg-slate-200 text-slate-700",
-};
-
-const ppeLabels: Record<PpeLabel, string> = {
-  Hardhat: "安全帽",
-  Mask: "口罩",
-  "NO-Hardhat": "未佩戴安全帽",
-  "NO-Mask": "未佩戴口罩",
-  "NO-Safety Vest": "未穿安全背心",
-  Person: "人员",
-  "Safety Cone": "安全锥",
-  "Safety Vest": "安全背心",
-  machinery: "机械设备",
-  vehicle: "车辆",
 };
 
 const EMPTY_DETECTIONS: VisionDetection[] = [];
@@ -117,6 +88,11 @@ const EMPTY_FINDING: FindingEditorValue = {
 };
 
 export default function Home() {
+  const { locale, t } = useLanguage();
+  const l = useCallback(
+    (zh: string, en: string) => (locale === "zh" ? zh : en),
+    [locale],
+  );
   const [note, setNote] = useState("");
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [reviewDecisions, setReviewDecisions] = useState<
@@ -211,7 +187,7 @@ export default function Home() {
       .getUser()
       .then(({ data, error: authError }) => {
         if (authError || !data.user) {
-          throw new Error("无法确认当前账号，本地巡检历史暂不可用。");
+          throw new Error(l("无法确认当前账号，本地巡检历史暂不可用。", "Your account could not be verified. Local history is unavailable."));
         }
 
         if (!cancelled) {
@@ -230,7 +206,7 @@ export default function Home() {
           setHistoryMessage(
             historyError instanceof Error
               ? historyError.message
-              : "无法读取本地巡检历史。",
+              : l("无法读取本地巡检历史。", "Unable to load local inspection history."),
           );
         }
       })
@@ -243,7 +219,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [l]);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,7 +242,7 @@ export default function Home() {
           setCloudMessage(
             projectError instanceof Error
               ? projectError.message
-              : "无法读取云端项目。",
+              : l("无法读取云端项目。", "Unable to load cloud projects."),
           );
         }
       })
@@ -279,16 +255,16 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [l]);
 
   async function handleSaveInspection() {
     if (result === null) {
-      setHistoryMessage("请先完成一次巡检分析。 ");
+      setHistoryMessage(l("请先完成一次巡检分析。", "Complete an inspection analysis first."));
       return;
     }
 
     if (!currentUserId) {
-      setHistoryMessage("无法确认当前账号，本地巡检历史暂不可用。");
+      setHistoryMessage(l("无法确认当前账号，本地巡检历史暂不可用。", "Your account could not be verified. Local history is unavailable."));
       return;
     }
 
@@ -297,9 +273,9 @@ export default function Home() {
     const createdAt = currentRecordCreatedAt ?? now;
     const location = result.analysis.location.trim();
     const title =
-      location.length > 0 && location !== "未提供"
+      location.length > 0 && location !== "未提供" && location !== "Not provided"
         ? location
-        : note.trim().slice(0, 30) || "未命名巡检";
+        : note.trim().slice(0, 30) || l("未命名巡检", "Untitled inspection");
     const record: StoredInspectionRecord = {
       version: 2,
       ownerId: currentUserId,
@@ -335,14 +311,14 @@ export default function Home() {
       setCurrentRecordCreatedAt(createdAt);
       setHistoryMessage(
         currentRecordId === null
-          ? "巡检记录已保存到当前浏览器。"
-          : "当前巡检记录已更新。",
+          ? l("巡检记录已保存到当前浏览器。", "Inspection saved in this browser.")
+          : l("当前巡检记录已更新。", "Current inspection updated."),
       );
     } catch (historyError) {
       setHistoryMessage(
         historyError instanceof Error
           ? historyError.message
-          : "保存巡检记录失败，浏览器存储空间可能不足。",
+          : l("保存巡检记录失败，浏览器存储空间可能不足。", "Unable to save the inspection. Browser storage may be full."),
       );
     } finally {
       setHistoryBusyRecordId(null);
@@ -351,7 +327,7 @@ export default function Home() {
 
   async function handleCloudSubmit() {
     if (result === null || selectedProjectId.length === 0) {
-      setCloudMessage("请先完成分析并选择所属项目。 ");
+      setCloudMessage(l("请先完成分析并选择所属项目。", "Complete the analysis and select a project first."));
       return;
     }
 
@@ -364,13 +340,13 @@ export default function Home() {
       total: number,
     ) => {
       if (stage === "CREATING_DRAFT") {
-        setCloudMessage("正在创建受保护的云端草稿……");
+        setCloudMessage(l("正在创建受保护的云端草稿……", "Creating a protected cloud draft…"));
       } else if (stage === "UPLOADING_PHOTOS") {
-        setCloudMessage(`正在上传私有照片 ${completed + 1}/${total}……`);
+        setCloudMessage(l(`正在上传私有照片 ${completed + 1}/${total}……`, `Uploading private photo ${completed + 1}/${total}…`));
       } else if (stage === "SUBMITTING_DATA") {
-        setCloudMessage("照片上传完成，正在执行数据库事务……");
+        setCloudMessage(l("照片上传完成，正在执行数据库事务……", "Photos uploaded. Saving the database transaction…"));
       } else {
-        setCloudMessage("提交未完成，正在清理云端草稿和照片……");
+        setCloudMessage(l("提交未完成，正在清理云端草稿和照片……", "Submission was not completed. Cleaning up the cloud draft and photos…"));
       }
     };
 
@@ -386,13 +362,16 @@ export default function Home() {
 
       setSubmittedInspectionId(submission.inspectionId);
       setCloudMessage(
-        `正式提交成功：已保存 ${photosRef.current.length} 张照片和 ${submission.findingCount} 条已批准问题。`,
+        l(
+          `正式提交成功：已保存 ${photosRef.current.length} 张照片和 ${submission.findingCount} 条已批准问题。`,
+          `Official submission complete: ${photosRef.current.length} photos and ${submission.findingCount} approved findings saved.`,
+        ),
       );
     } catch (submissionError) {
       setCloudMessage(
         submissionError instanceof Error
           ? submissionError.message
-          : "云端提交失败。",
+          : l("云端提交失败。", "Cloud submission failed."),
       );
     } finally {
       setCloudBusy(false);
@@ -447,12 +426,12 @@ export default function Home() {
       setSubmittedInspectionId("");
       setCloudMessage("");
       closeFindingEditor();
-      setHistoryMessage("已载入巡检记录及其照片和审核状态。 ");
+      setHistoryMessage(l("已载入巡检记录及其照片和审核状态。", "Inspection, photos and review status loaded."));
     } catch (historyError) {
       setHistoryMessage(
         historyError instanceof Error
           ? historyError.message
-          : "载入巡检记录失败。",
+          : l("载入巡检记录失败。", "Unable to load the inspection."),
       );
     } finally {
       setHistoryBusyRecordId(null);
@@ -465,7 +444,7 @@ export default function Home() {
 
     try {
       if (!currentUserId) {
-        throw new Error("无法确认当前账号，本地巡检历史暂不可用。");
+        throw new Error(l("无法确认当前账号，本地巡检历史暂不可用。", "Your account could not be verified. Local history is unavailable."));
       }
       await deleteInspectionRecord(recordId, currentUserId);
       setHistoryRecords((records) =>
@@ -477,12 +456,12 @@ export default function Home() {
         setCurrentRecordCreatedAt(null);
       }
 
-      setHistoryMessage("本地巡检记录已删除。当前页面内容未被清空。 ");
+      setHistoryMessage(l("本地巡检记录已删除。当前页面内容未被清空。", "Local inspection deleted. The current page has not been cleared."));
     } catch (historyError) {
       setHistoryMessage(
         historyError instanceof Error
           ? historyError.message
-          : "删除本地巡检记录失败。",
+          : l("删除本地巡检记录失败。", "Unable to delete the local inspection."),
       );
     } finally {
       setHistoryBusyRecordId(null);
@@ -547,7 +526,7 @@ export default function Home() {
           highlightedDetectionIds.includes(
             getDetectionId(activePhotoId, detectionIndex),
           );
-        const label = `${ppeLabels[detection.label]} ${Math.round(
+        const label = `${detectionLabel(locale, detection.label)} ${Math.round(
           detection.confidence * 100,
         )}%`;
         const textWidth = context.measureText(label).width;
@@ -598,7 +577,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [activePhotoId, detections, highlightedDetectionIds, previewUrl]);
+  }, [activePhotoId, detections, highlightedDetectionIds, locale, previewUrl]);
 
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(event.target.files ?? []);
@@ -609,19 +588,19 @@ export default function Home() {
 
     if (selectedFiles.length > 10) {
       event.target.value = "";
-      setError("一次最多选择 10 张图片。");
+      setError(l("一次最多选择 10 张图片。", "Select no more than 10 images."));
       return;
     }
 
     if (selectedFiles.some((file) => !file.type.startsWith("image/"))) {
       event.target.value = "";
-      setError("请选择 JPEG、PNG 或 WebP 图片。");
+      setError(l("请选择 JPEG、PNG 或 WebP 图片。", "Select JPEG, PNG or WebP images."));
       return;
     }
 
     if (selectedFiles.some((file) => file.size > 10 * 1024 * 1024)) {
       event.target.value = "";
-      setError("每张图片不能超过 10 MB。");
+      setError(l("每张图片不能超过 10 MB。", "Each image must be 10 MB or smaller."));
       return;
     }
 
@@ -681,7 +660,7 @@ export default function Home() {
 
     if (photo === undefined) {
       setEvidenceNavigationMessage(
-        `找不到证据照片“${photoName}”，它可能已被替换。`,
+        l(`找不到证据照片“${photoName}”，它可能已被替换。`, `Evidence photo “${photoName}” was not found and may have been replaced.`),
       );
       return;
     }
@@ -695,8 +674,8 @@ export default function Home() {
     setHighlightedDetectionIds(matchingDetectionIds);
     setEvidenceNavigationMessage(
       matchingDetectionIds.length > 0
-        ? `已切换到“${photoName}”，并高亮 ${matchingDetectionIds.length} 个证据框。`
-        : `已切换到“${photoName}”。该 finding 没有精确的检测框引用，请人工查看整张照片。`,
+        ? l(`已切换到“${photoName}”，并高亮 ${matchingDetectionIds.length} 个证据框。`, `Showing “${photoName}” with ${matchingDetectionIds.length} evidence boxes highlighted.`)
+        : l(`已切换到“${photoName}”。该 finding 没有精确的检测框引用，请人工查看整张照片。`, `Showing “${photoName}”. This finding has no exact detection-box reference; review the full photo manually.`),
     );
 
     requestAnimationFrame(() => {
@@ -730,7 +709,7 @@ export default function Home() {
       const message =
         detectionError instanceof Error
           ? detectionError.message
-          : "图片识别失败。";
+          : l("图片识别失败。", "Image detection failed.");
 
       updatePhoto(photo.id, (currentPhoto) => ({
         ...currentPhoto,
@@ -745,7 +724,7 @@ export default function Home() {
 
   async function handleImageDetection() {
     if (activePhoto === null) {
-      setError("请先选择一张施工现场图片。");
+      setError(l("请先选择一张施工现场图片。", "Select a construction site image first."));
       return;
     }
 
@@ -824,7 +803,7 @@ export default function Home() {
 
   async function handleDetectAllPhotos() {
     if (photosRef.current.length === 0) {
-      setError("请先选择施工现场图片。");
+      setError(l("请先选择施工现场图片。", "Select construction site images first."));
       return;
     }
 
@@ -904,6 +883,7 @@ export default function Home() {
         body: JSON.stringify({
           note,
           photoEvidence,
+          locale,
         }),
       });
 
@@ -918,7 +898,7 @@ export default function Home() {
         throw new Error(
           errorData.message ??
             errorData.error ??
-            "巡检分析失败",
+            l("巡检分析失败", "Inspection analysis failed"),
         );
       }
 
@@ -927,7 +907,7 @@ export default function Home() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "发生未知错误",
+          : l("发生未知错误", "An unknown error occurred"),
       );
     } finally {
       setDetecting(false);
@@ -1061,7 +1041,7 @@ export default function Home() {
   }
 
   return (
-    <ProductShell>
+    <ProductShell pageLabel={t("inspection.pageLabel")} title={t("inspection.pageTitle")}>
       <main id="workspace" className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="mx-auto max-w-[1440px]">
           <header className="flex flex-col justify-between gap-5 xl:flex-row xl:items-end">
@@ -1071,25 +1051,25 @@ export default function Home() {
                 Smart site safety
               </div>
               <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-                新建智能巡检
+                {t("inspection.heroTitle")}
               </h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-                上传施工现场照片，使用本地视觉模型提取证据，再由 AI 生成可审核、可追溯的整改问题草稿。
+                {t("inspection.heroDescription")}
               </p>
             </div>
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              YOLO 本地识别已就绪
+              {t("inspection.visionReady")}
             </div>
           </header>
 
-          <section aria-label="巡检进度" className="mt-7 grid gap-3 md:grid-cols-3">
+          <section aria-label={t("inspection.progressLabel")} className="mt-7 grid gap-3 md:grid-cols-3">
             <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 shadow-sm">
               <div className="flex items-center gap-3">
                 <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">1</span>
                 <div>
-                  <p className="text-sm font-bold text-slate-900">上传与视觉识别</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{photos.length} 张照片 · {photos.filter((photo) => photo.detectionStatus === "DONE").length} 张已识别</p>
+                  <p className="text-sm font-bold text-slate-900">{t("inspection.stepUpload")}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{photos.length} {t("common.photoCount")} · {photos.filter((photo) => photo.detectionStatus === "DONE").length} {locale === "zh" ? "张已识别" : "analysed"}</p>
                 </div>
               </div>
             </div>
@@ -1097,8 +1077,8 @@ export default function Home() {
               <div className="flex items-center gap-3">
                 <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold ${result === null ? "bg-slate-100 text-slate-500" : "bg-violet-600 text-white"}`}>2</span>
                 <div>
-                  <p className="text-sm font-bold text-slate-900">AI 分析与人工审核</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{result?.analysis.findings.length ?? 0} 条问题 · {findingReviewCounts.APPROVED} 条已批准</p>
+                  <p className="text-sm font-bold text-slate-900">{t("inspection.stepAnalysis")}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{result?.analysis.findings.length ?? 0} {t("common.findingCount")} · {findingReviewCounts.APPROVED} {t("submission.approved")}</p>
                 </div>
               </div>
             </div>
@@ -1106,8 +1086,8 @@ export default function Home() {
               <div className="flex items-center gap-3">
                 <span className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold ${submittedInspectionId ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-500"}`}>3</span>
                 <div>
-                  <p className="text-sm font-bold text-slate-900">确认并提交记录</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{submittedInspectionId ? "已保存至项目云端" : "等待完成审核"}</p>
+                  <p className="text-sm font-bold text-slate-900">{t("inspection.stepSubmit")}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">{submittedInspectionId ? t("inspection.savedCloud") : t("inspection.waitingReview")}</p>
                 </div>
               </div>
             </div>
@@ -1118,16 +1098,16 @@ export default function Home() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600">Step 01</p>
-                  <h2 className="mt-1 text-xl font-bold text-slate-950">采集现场信息</h2>
+                  <h2 className="mt-1 text-xl font-bold text-slate-950">{t("inspection.captureTitle")}</h2>
                 </div>
-                <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">图片只在浏览器内完成目标检测</p>
+                <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">{t("inspection.browserOnly")}</p>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="p-5 sm:p-7">
           <fieldset>
             <legend className="font-semibold text-slate-800">
-              现场照片
+              {t("inspection.sitePhotos")}
             </legend>
 
             <input
@@ -1139,17 +1119,17 @@ export default function Home() {
             />
 
             <p className="mt-2 text-sm text-slate-500">
-              图片只在当前浏览器中由 YOLOv8 分析，不会上传给 LLM。一次最多 10 张，每张最大 10 MB。
+              {t("inspection.photoHelp")}
             </p>
 
             {photos.length > 0 && (
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-semibold text-slate-800">
-                    已选择 {photos.length} 张照片
+                    {t("inspection.selectedPhotos")} {photos.length} {t("common.photoCount")}
                   </p>
                   <p className="text-sm text-slate-500">
-                    检测结果按照片保存，开始分析时汇总全部照片
+                    {t("inspection.resultsGrouped")}
                   </p>
                 </div>
 
@@ -1158,12 +1138,12 @@ export default function Home() {
                     const isActive = photo.id === activePhotoId;
                     const statusLabel =
                       photo.detectionStatus === "DONE"
-                        ? `已识别 ${photo.detections.length} 项`
+                        ? `${locale === "zh" ? "已识别" : "Detected"} ${photo.detections.length}`
                         : photo.detectionStatus === "RUNNING"
-                          ? "识别中"
+                          ? t("inspection.detecting")
                           : photo.detectionStatus === "ERROR"
-                            ? "识别失败"
-                            : "未识别";
+                            ? t("inspection.detectFailed")
+                            : t("inspection.notDetected");
 
                     return (
                       <button
@@ -1180,8 +1160,8 @@ export default function Home() {
                       >
                         <span className="flex items-center justify-between gap-3 text-sm font-semibold">
                           <span>
-                            照片 {index + 1}
-                            {isActive ? " · 当前" : ""}
+                            {locale === "zh" ? "照片" : "Photo"} {index + 1}
+                            {isActive ? ` · ${t("inspection.current")}` : ""}
                           </span>
                           <span className="text-xs font-medium opacity-70">
                             {statusLabel}
@@ -1221,8 +1201,8 @@ export default function Home() {
                 className="rounded-xl border border-blue-600 px-5 py-2.5 font-semibold text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {detecting && !isBatchDetecting
-                  ? "正在加载模型并识别……"
-                  : "识别当前照片"}
+                  ? t("inspection.detectCurrentBusy")
+                  : t("inspection.detectCurrent")}
               </button>
 
               <button
@@ -1234,10 +1214,10 @@ export default function Home() {
                 className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isBatchDetecting && batchProgress !== null
-                  ? `批量识别 ${batchProgress.completed}/${batchProgress.total}`
+                  ? `${l("批量识别", "Batch detection")} ${batchProgress.completed}/${batchProgress.total}`
                   : allPhotosDetected
-                    ? "全部照片已识别"
-                    : "识别全部照片"}
+                    ? t("inspection.allDetected")
+                    : t("inspection.detectAll")}
               </button>
             </div>
 
@@ -1245,15 +1225,15 @@ export default function Home() {
               <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <p className="font-semibold text-blue-900">
-                    批量识别：{batchProgress.completed}/
+                    {l("批量识别", "Batch detection")}：{batchProgress.completed}/
                     {batchProgress.total}
                   </p>
                   <p className="text-blue-700">
                     {batchProgress.currentPhotoName.length > 0
-                      ? `正在识别：${batchProgress.currentPhotoName}`
+                      ? `${l("正在识别", "Detecting")}：${batchProgress.currentPhotoName}`
                       : batchProgress.failed > 0
-                        ? `已完成，失败 ${batchProgress.failed} 张`
-                        : "全部完成"}
+                        ? l(`已完成，失败 ${batchProgress.failed} 张`, `Complete, ${batchProgress.failed} failed`)
+                        : t("inspection.batchComplete")}
                   </p>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-100">
@@ -1280,17 +1260,17 @@ export default function Home() {
             {hasDetected && (
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="font-semibold text-slate-800">
-                  当前照片的视觉检测结果
+                  {t("inspection.currentDetections")}
                 </p>
 
                 {detections.length === 0 ? (
                   <p className="mt-2 text-sm text-slate-600">
-                    当前阈值下未检测到模型支持的目标，请人工检查照片。
+                    {t("inspection.noDetections")}
                   </p>
                 ) : (
                   <>
                     <p className="mt-1 text-sm text-slate-500">
-                      取消勾选误检项目后，这些项目不会发送给 LLM。
+                      {t("inspection.excludeHint")}
                     </p>
 
                     <ul className="mt-3 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
@@ -1324,7 +1304,7 @@ export default function Home() {
                                   : ""
                               }
                             >
-                              {ppeLabels[detection.label]} ·{" "}
+                              {detectionLabel(locale, detection.label)} ·{" "}
                               {Math.round(detection.confidence * 100)}%
                             </span>
                           </label>
@@ -1341,7 +1321,7 @@ export default function Home() {
             htmlFor="inspection-note"
             className="mt-8 block font-semibold text-slate-800"
           >
-            巡检备注
+            {t("inspection.note")}
           </label>
 
           <textarea
@@ -1352,7 +1332,7 @@ export default function Home() {
               setSubmittedInspectionId("");
             }}
             rows={7}
-            placeholder="请输入巡检备注"
+            placeholder={t("inspection.notePlaceholder")}
             className="mt-2 w-full rounded-xl border border-slate-300 p-4 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           />
 
@@ -1362,17 +1342,17 @@ export default function Home() {
             className="mt-4 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {detecting
-              ? "正在识别照片……"
+              ? t("inspection.analyzingPhotos")
               : loading
-                ? "AI 正在分析……"
-                : "开始分析"}
+                ? t("inspection.analyzingAi")
+                : t("inspection.startAnalysis")}
           </button>
             </form>
           </section>
 
         {error && (
           <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
-            <p className="font-semibold">分析失败</p>
+            <p className="font-semibold">{t("inspection.analysisFailed")}</p>
             <p className="mt-1 text-sm">{error}</p>
           </div>
         )}
@@ -1381,23 +1361,23 @@ export default function Home() {
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:p-7">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-bold text-slate-900">
-                AI 分析草稿
+                {t("inspection.draftTitle")}
               </h2>
 
               <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-medium text-amber-800">
-                等待人工审核
+                {t("inspection.awaitingHuman")}
               </span>
             </div>
 
             <p className="mt-2 text-sm text-slate-600">
-              以下内容由 AI 生成，不能直接作为最终安全结论。
+              {t("inspection.aiDisclaimer")}
             </p>
 
             <div className="mt-5 flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="font-semibold text-slate-900">正式巡检报告</p>
+                <p className="font-semibold text-slate-900">{t("inspection.reportTitle")}</p>
                 <p className="mt-1 text-sm leading-5 text-slate-600">
-                  报告只收录人工批准的问题，并附上巡检备注、证据照片和自动检测框。
+                  {t("inspection.reportDescription")}
                 </p>
               </div>
               <ReportDownload
@@ -1418,14 +1398,14 @@ export default function Home() {
 
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-5">
               <p className="text-sm font-medium text-slate-500">
-                巡检位置
+                {t("inspection.location")}
               </p>
               <p className="mt-1 font-semibold text-slate-900">
                 {result.analysis.location}
               </p>
 
               <p className="mt-4 text-sm font-medium text-slate-500">
-                分析摘要
+                {t("inspection.summary")}
               </p>
               <p className="mt-1 text-slate-800">
                 {result.analysis.summary}
@@ -1434,7 +1414,7 @@ export default function Home() {
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-slate-600">
-                共 {result.analysis.findings.length} 条问题记录
+                {result.analysis.findings.length} {t("common.findingCount")}
               </p>
               <button
                 type="button"
@@ -1446,20 +1426,20 @@ export default function Home() {
                 disabled={isAddingFinding}
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                + 人工新增问题
+                {t("inspection.addFinding")}
               </button>
             </div>
 
             {isAddingFinding && (
               <div className="mt-5">
                 <h3 className="mb-3 font-semibold text-slate-900">
-                  新增人工 finding
+                  {t("inspection.addFindingTitle")}
                 </h3>
                 <FindingEditor
                   key="new-finding"
                   initialValue={EMPTY_FINDING}
                   photoNames={photos.map((photo) => photo.file.name)}
-                  submitLabel="保存新增问题"
+                  submitLabel={t("inspection.saveNew")}
                   onSave={addFinding}
                   onCancel={closeFindingEditor}
                 />
@@ -1468,7 +1448,7 @@ export default function Home() {
 
             {result.analysis.findings.length === 0 && !isAddingFinding ? (
               <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-800">
-                AI 当前没有识别到系统支持的问题；如现场存在其他问题，可点击“人工新增问题”。
+                {t("inspection.noFindings")}
               </div>
             ) : (
               <div className="mt-5 space-y-5">
@@ -1476,7 +1456,7 @@ export default function Home() {
                   editingFindingId === finding.id ? (
                     <div key={finding.id}>
                       <h3 className="mb-3 font-semibold text-slate-900">
-                        编辑问题 {index + 1}
+                        {t("inspection.editFinding")} {index + 1}
                       </h3>
                       <FindingEditor
                         initialValue={{
@@ -1485,7 +1465,7 @@ export default function Home() {
                             finding.evidence_detection_ids ?? [],
                         }}
                         photoNames={photos.map((photo) => photo.file.name)}
-                        submitLabel="保存修改"
+                        submitLabel={t("inspection.saveEdit")}
                         onSave={(value) => updateFinding(finding.id, value)}
                         onCancel={closeFindingEditor}
                       />
@@ -1498,8 +1478,8 @@ export default function Home() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-blue-600">
-                          问题 {index + 1} ·{" "}
-                          {categoryLabels[finding.category]}
+                          {t("inspection.finding")} {index + 1} ·{" "}
+                          {categoryLabel(locale, finding.category)}
                         </p>
                         <h3 className="mt-1 text-lg font-bold text-slate-900">
                           {finding.title}
@@ -1507,13 +1487,13 @@ export default function Home() {
                         <div className="mt-2 flex flex-wrap gap-2">
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
                             {finding.origin === "HUMAN"
-                              ? "人工新增"
-                              : "AI 生成"}
+                              ? t("inspection.manual")
+                              : t("inspection.aiGenerated")}
                           </span>
                           {finding.modified_by_human &&
                             finding.origin === "AI" && (
                               <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-700">
-                                已人工修改
+                                {t("inspection.modified")}
                               </span>
                             )}
                         </div>
@@ -1524,14 +1504,14 @@ export default function Home() {
                           riskStyles[finding.risk_level]
                         }`}
                       >
-                        {riskLabels[finding.risk_level]}
+                        {riskLabel(locale, finding.risk_level)}
                       </span>
                     </div>
 
                     <dl className="mt-5 grid gap-4">
                       <div>
                         <dt className="text-sm font-semibold text-slate-500">
-                          问题描述
+                          {t("editor.description")}
                         </dt>
                         <dd className="mt-1 text-slate-800">
                           {finding.description}
@@ -1540,7 +1520,7 @@ export default function Home() {
 
                       <div>
                         <dt className="text-sm font-semibold text-slate-500">
-                          可见证据
+                          {t("editor.visibleEvidence")}
                         </dt>
                         <dd className="mt-1 text-slate-800">
                           {finding.visible_evidence}
@@ -1549,7 +1529,7 @@ export default function Home() {
 
                       <div>
                         <dt className="text-sm font-semibold text-slate-500">
-                          证据来源
+                          {t("inspection.evidenceSource")}
                         </dt>
                         <dd className="mt-2 flex flex-wrap gap-2">
                           {finding.evidence_photos.length > 0 ? (
@@ -1564,14 +1544,14 @@ export default function Home() {
                                   )
                                 }
                                 className="rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                title="查看并高亮该照片中的证据"
+                                title={t("inspection.viewPhoto")}
                               >
-                                查看照片：{photoName}
+                                {t("inspection.viewPhoto")}：{photoName}
                               </button>
                             ))
                           ) : (
                             <span className="text-slate-800">
-                              巡检备注
+                              {t("inspection.note")}
                             </span>
                           )}
                         </dd>
@@ -1579,7 +1559,7 @@ export default function Home() {
 
                       <div>
                         <dt className="text-sm font-semibold text-slate-500">
-                          建议整改措施
+                          {t("editor.correctiveAction")}
                         </dt>
                         <dd className="mt-1 text-slate-800">
                           {finding.corrective_action}
@@ -1590,7 +1570,7 @@ export default function Home() {
                     {finding.uncertainty.length > 0 && (
                       <div className="mt-5 rounded-lg bg-amber-50 p-4">
                         <p className="text-sm font-semibold text-amber-900">
-                          待人工确认
+                          {t("inspection.awaitingHuman")}
                         </p>
 
                         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-800">
@@ -1607,12 +1587,12 @@ export default function Home() {
 
                     <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
                       <p className="text-sm font-medium text-slate-600">
-                        审核状态：
+                        {t("inspection.reviewStatus")}：
                         {reviewDecisions[finding.id] === "APPROVED"
-                          ? "已批准"
+                          ? t("inspection.statusApproved")
                           : reviewDecisions[finding.id] === "REJECTED"
-                            ? "已驳回"
-                            : "等待审核"}
+                            ? t("inspection.statusRejected")
+                            : t("inspection.statusPending")}
                       </p>
 
                       <div className="flex flex-wrap gap-2">
@@ -1623,14 +1603,14 @@ export default function Home() {
                               onClick={() => setPendingDeleteFindingId(null)}
                               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                             >
-                              取消删除
+                              {t("inspection.undoDelete")}
                             </button>
                             <button
                               type="button"
                               onClick={() => deleteFinding(finding.id)}
                               className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
                             >
-                              确认删除
+                              {t("common.confirmDelete")}
                             </button>
                           </>
                         ) : (
@@ -1643,7 +1623,7 @@ export default function Home() {
                               }}
                               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                             >
-                              删除
+                              {t("common.delete")}
                             </button>
                             <button
                               type="button"
@@ -1654,7 +1634,7 @@ export default function Home() {
                               }}
                               className="rounded-lg border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50"
                             >
-                              编辑
+                              {t("common.edit")}
                             </button>
                           </>
                         )}
@@ -1672,7 +1652,7 @@ export default function Home() {
                               : "border-red-200 text-red-700 hover:bg-red-50"
                           }`}
                         >
-                          驳回
+                          {t("inspection.reject")}
                         </button>
 
                         <button
@@ -1689,7 +1669,7 @@ export default function Home() {
                               : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                           }`}
                         >
-                          批准
+                          {t("inspection.approve")}
                         </button>
                       </div>
                     </div>

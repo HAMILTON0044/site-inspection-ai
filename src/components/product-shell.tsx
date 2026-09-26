@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useLanguage } from "@/components/language-provider";
 
 type ProductShellProps = {
   children: ReactNode;
@@ -98,9 +101,13 @@ function navigationClass(active: boolean) {
 export function ProductShell({
   children,
   activeItem = "new",
-  pageLabel = "新建巡检",
-  title = "AI 现场安全巡检工作台",
+  pageLabel,
+  title,
 }: ProductShellProps) {
+  const { t } = useLanguage();
+  const resolvedPageLabel = pageLabel ?? t("shell.defaultPageLabel");
+  const resolvedTitle = title ?? t("shell.defaultTitle");
+
   return (
     <div className="min-h-screen bg-[#f4f6f8] text-slate-950">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-slate-800 bg-[#0b1728] text-slate-200 lg:flex">
@@ -118,14 +125,14 @@ export function ProductShell({
           </div>
         </div>
 
-        <nav aria-label="主导航" className="flex-1 px-4 py-6">
+        <nav aria-label={t("nav.primary")} className="flex-1 px-4 py-6">
           <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            工作台
+            {t("nav.workspace")}
           </p>
           <div className="mt-3 space-y-1">
             <Link href="/" className={navigationClass(activeItem === "new")}>
               <Icon name="inspection" />
-              新建智能巡检
+              {t("nav.newInspection")}
               {activeItem === "new" && (
                 <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
               )}
@@ -135,7 +142,7 @@ export function ProductShell({
               className={navigationClass(activeItem === "records")}
             >
               <Icon name="dashboard" />
-              巡检记录
+              {t("nav.records")}
               {activeItem === "records" && (
                 <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
               )}
@@ -143,7 +150,7 @@ export function ProductShell({
           </div>
 
           <p className="mt-8 px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            管理
+            {t("nav.management")}
           </p>
           <div className="mt-3 space-y-1">
             <Link
@@ -151,7 +158,7 @@ export function ProductShell({
               className={navigationClass(activeItem === "findings")}
             >
               <Icon name="finding" />
-              问题看板
+              {t("nav.findings")}
               {activeItem === "findings" && (
                 <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
               )}
@@ -161,7 +168,7 @@ export function ProductShell({
               className={navigationClass(activeItem === "projects")}
             >
               <Icon name="team" />
-              团队与项目
+              {t("nav.projects")}
               {activeItem === "projects" && (
                 <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
               )}
@@ -171,7 +178,7 @@ export function ProductShell({
               className={navigationClass(activeItem === "reports")}
             >
               <Icon name="report" />
-              报告中心
+              {t("nav.reports")}
               {activeItem === "reports" && (
                 <span className="ml-auto h-2 w-2 rounded-full bg-amber-400" />
               )}
@@ -185,30 +192,30 @@ export function ProductShell({
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
             </span>
-            系统运行正常
+            {t("shell.systemHealthy")}
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-400">
-            本地视觉识别与云端记录服务已连接。
+            {t("shell.systemHealthyDetail")}
           </p>
         </div>
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-[76px] items-center border-b border-slate-200 bg-white/95 px-4 pr-52 backdrop-blur sm:px-6 sm:pr-72 lg:px-8">
+        <header className="sticky top-0 z-30 flex h-[76px] items-center border-b border-slate-200 bg-white/95 px-4 pr-80 backdrop-blur sm:px-6 sm:pr-96 lg:px-8">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-              <span>巡检管理</span>
+              <span>{t("nav.inspectionManagement")}</span>
               <span aria-hidden="true">/</span>
-              <span className="text-slate-800">{pageLabel}</span>
+              <span className="text-slate-800">{resolvedPageLabel}</span>
             </div>
             <p className="mt-1 truncate text-sm font-semibold text-slate-900 sm:text-base">
-              {title}
+              {resolvedTitle}
             </p>
           </div>
         </header>
 
         <nav
-          aria-label="移动端主导航"
+          aria-label={t("nav.mobile")}
           className="flex gap-2 overflow-x-auto border-b border-slate-200 bg-white px-4 py-3 lg:hidden"
         >
           <Link
@@ -219,7 +226,7 @@ export function ProductShell({
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            新建巡检
+            {t("nav.newInspectionShort")}
           </Link>
           <Link
             href="/inspections"
@@ -229,7 +236,7 @@ export function ProductShell({
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            云端记录
+            {t("nav.cloudRecords")}
           </Link>
           <Link
             href="/findings"
@@ -239,7 +246,7 @@ export function ProductShell({
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            问题看板
+            {t("nav.findings")}
           </Link>
           <Link
             href="/projects"
@@ -249,7 +256,7 @@ export function ProductShell({
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            团队项目
+            {t("nav.projectsShort")}
           </Link>
           <Link
             href="/reports"
@@ -259,7 +266,7 @@ export function ProductShell({
                 : "text-slate-600 hover:bg-slate-100"
             }`}
           >
-            报告中心
+            {t("nav.reports")}
           </Link>
         </nav>
 

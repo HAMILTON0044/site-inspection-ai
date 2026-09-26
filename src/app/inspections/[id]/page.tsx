@@ -9,24 +9,11 @@ import {
   type CloudInspectionDetail,
   type CloudInspectionPhoto,
 } from "@/lib/cloud-inspection-queries";
+import { getLocale } from "@/lib/i18n-server";
+import { categoryLabel, detectionLabel, riskLabel, type Locale } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: "巡检详情 | Site Inspection AI",
-};
-
-const categoryLabels: Record<string, string> = {
-  BLOCKED_ACCESS: "通道或出口堵塞",
-  UNSAFE_CABLE: "电缆安全问题",
-  MISSING_PPE: "缺少个人防护装备",
-  IMPROPER_STORAGE: "材料堆放不规范",
-};
-
-const riskLabels: Record<string, string> = {
-  LOW: "低风险",
-  MEDIUM: "中风险",
-  HIGH: "高风险",
-  CRITICAL: "严重风险",
-  UNCONFIRMED: "风险待确认",
 };
 
 const statusLabels: Record<string, string> = {
@@ -48,19 +35,6 @@ const eventLabels: Record<string, string> = {
   DUE_DATE_CHANGED: "调整截止时间",
   REOPENED: "重新打开",
   CLOSED: "关闭问题",
-};
-
-const detectionLabels: Record<string, string> = {
-  Hardhat: "安全帽",
-  Mask: "口罩",
-  "NO-Hardhat": "未佩戴安全帽",
-  "NO-Mask": "未佩戴口罩",
-  "NO-Safety Vest": "未穿安全背心",
-  Person: "人员",
-  "Safety Cone": "安全锥",
-  "Safety Vest": "安全背心",
-  machinery: "机械设备",
-  vehicle: "车辆",
 };
 
 const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -106,10 +80,12 @@ function DetectionBox({
   detection,
   photo,
   referenced,
+  locale,
 }: {
   detection: CloudDetection;
   photo: CloudInspectionPhoto;
   referenced: boolean;
+  locale: Locale;
 }) {
   const violation = detection.label.startsWith("NO-");
   const color = referenced ? "#facc15" : violation ? "#dc2626" : "#2563eb";
@@ -133,7 +109,7 @@ function DetectionBox({
         className="absolute -top-6 left-[-2px] whitespace-nowrap px-1.5 py-1 text-[10px] font-bold text-white shadow-sm"
         style={{ backgroundColor: color }}
       >
-        {detectionLabels[detection.label] ?? detection.label} · {Math.round(detection.confidence * 100)}%
+        {detectionLabel(locale, detection.label)} · {Math.round(detection.confidence * 100)}%
       </span>
     </span>
   );
@@ -142,10 +118,13 @@ function DetectionBox({
 function PhotoCard({
   photo,
   referencedDetectionIds,
+  locale,
 }: {
   photo: CloudInspectionPhoto;
   referencedDetectionIds: Set<string>;
+  locale: Locale;
 }) {
+  const l = (zh: string, en: string) => (locale === "zh" ? zh : en);
   const activeDetections = photo.detections.filter(
     (detection) => !detection.excludedByUser,
   );
@@ -163,7 +142,7 @@ function PhotoCard({
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-          {activeDetections.length} 项检测
+          {activeDetections.length} {l("项检测", "detections")}
         </span>
       </div>
 
@@ -177,7 +156,7 @@ function PhotoCard({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={photo.signedUrl}
-              alt={`巡检证据：${photo.originalFileName}`}
+              alt={`${l("巡检证据", "Inspection evidence")}：${photo.originalFileName}`}
               className="block h-full w-full object-contain"
             />
             {activeDetections.map((detection) => (
@@ -186,20 +165,21 @@ function PhotoCard({
                 detection={detection}
                 photo={photo}
                 referenced={referencedDetectionIds.has(detection.id)}
+                locale={locale}
               />
             ))}
           </div>
         </div>
       ) : (
         <div className="flex min-h-56 items-center justify-center bg-slate-100 px-6 text-center text-sm text-slate-500">
-          私有照片签名链接生成失败，请刷新页面重试。
+          {l("私有照片签名链接生成失败，请刷新页面重试。", "The private photo link could not be generated. Refresh and try again.")}
         </div>
       )}
 
       <div className="px-5 py-4">
         <div className="flex flex-wrap gap-2">
           {activeDetections.length === 0 ? (
-            <span className="text-sm text-slate-500">没有保留的检测结果</span>
+            <span className="text-sm text-slate-500">{l("没有保留的检测结果", "No retained detections")}</span>
           ) : (
             activeDetections.map((detection) => (
               <span
@@ -212,14 +192,14 @@ function PhotoCard({
                       : "bg-blue-50 text-blue-700"
                 }`}
               >
-                {detectionLabels[detection.label] ?? detection.label} {Math.round(detection.confidence * 100)}%
+                {detectionLabel(locale, detection.label)} {Math.round(detection.confidence * 100)}%
               </span>
             ))
           )}
         </div>
         {excludedCount > 0 && (
           <p className="mt-3 text-xs text-slate-500">
-            另有 {excludedCount} 项检测已由巡检员排除，不显示在证据图中。
+            {l(`另有 ${excludedCount} 项检测已由巡检员排除，不显示在证据图中。`, `${excludedCount} detections were excluded by the Inspector and are not shown in the evidence image.`)}
           </p>
         )}
       </div>
@@ -230,16 +210,19 @@ function PhotoCard({
 function FindingCard({
   finding,
   photoNames,
+  locale,
 }: {
   finding: CloudFinding;
   photoNames: Map<string, string>;
+  locale: Locale;
 }) {
+  const l = (zh: string, en: string) => (locale === "zh" ? zh : en);
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold tracking-wide text-blue-600">
-            {categoryLabels[finding.category] ?? finding.category}
+            {categoryLabel(locale, finding.category)}
           </p>
           <h3 className="mt-2 text-lg font-bold text-slate-950">
             {finding.title}
@@ -247,7 +230,7 @@ function FindingCard({
         </div>
         <div className="flex flex-wrap gap-2">
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${riskClass(finding.riskLevel)}`}>
-            {riskLabels[finding.riskLevel] ?? finding.riskLevel}
+            {riskLabel(locale, finding.riskLevel)}
           </span>
           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(finding.status)}`}>
             {statusLabels[finding.status] ?? finding.status}
@@ -256,17 +239,17 @@ function FindingCard({
       </div>
 
       <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
-        <DetailTerm label="问题描述" value={finding.description} />
-        <DetailTerm label="可见证据" value={finding.visibleEvidence} />
+        <DetailTerm label={l("问题描述", "Description")} value={finding.description} />
+        <DetailTerm label={l("可见证据", "Visible evidence")} value={finding.visibleEvidence} />
         <DetailTerm
-          label="负责人"
-          value={finding.assigneeName ?? "尚未分配"}
+          label={l("负责人", "Assignee")}
+          value={finding.assigneeName ?? l("尚未分配", "Unassigned")}
         />
-        <DetailTerm label="整改期限" value={formatDate(finding.dueAt)} />
+        <DetailTerm label={l("整改期限", "Due date")} value={formatDate(finding.dueAt)} />
       </dl>
 
       <div className="mt-5 rounded-xl bg-blue-50 p-4">
-        <p className="text-xs font-bold text-blue-700">建议整改措施</p>
+        <p className="text-xs font-bold text-blue-700">{l("建议整改措施", "Recommended corrective action")}</p>
         <p className="mt-2 text-sm leading-6 text-blue-950">
           {finding.correctiveAction}
         </p>
@@ -274,7 +257,7 @@ function FindingCard({
 
       {finding.uncertainty.length > 0 && (
         <div className="mt-4">
-          <p className="text-xs font-bold text-slate-500">仍需现场确认</p>
+          <p className="text-xs font-bold text-slate-500">{l("仍需现场确认", "Requires site confirmation")}</p>
           <ul className="mt-2 space-y-1 text-sm text-slate-700">
             {finding.uncertainty.map((item) => (
               <li key={item}>• {item}</li>
@@ -285,20 +268,20 @@ function FindingCard({
 
       <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
         {finding.evidencePhotoIds.length === 0 ? (
-          <span className="text-xs text-slate-500">证据来自巡检文字备注</span>
+          <span className="text-xs text-slate-500">{l("证据来自巡检文字备注", "Evidence comes from the inspection note")}</span>
         ) : (
           finding.evidencePhotoIds.map((photoId) => (
             <span
               key={photoId}
               className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
             >
-              证据照片：{photoNames.get(photoId) ?? "未知照片"}
+              {l("证据照片", "Evidence photo")}：{photoNames.get(photoId) ?? l("未知照片", "Unknown photo")}
             </span>
           ))
         )}
         {finding.evidenceDetectionIds.length > 0 && (
           <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-semibold text-yellow-900">
-            精确关联 {finding.evidenceDetectionIds.length} 个检测框
+            {l(`精确关联 ${finding.evidenceDetectionIds.length} 个检测框`, `Linked to ${finding.evidenceDetectionIds.length} exact detection boxes`)}
           </span>
         )}
       </div>
@@ -307,13 +290,13 @@ function FindingCard({
         href={`/findings/${finding.id}`}
         className="mt-5 inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
       >
-        打开整改任务
+        {l("打开整改任务", "Open corrective task")}
       </Link>
 
       {finding.events.length > 0 && (
         <div className="mt-5 border-t border-slate-100 pt-4">
           <p className="text-xs font-bold tracking-wide text-slate-500">
-            审计记录
+            {l("审计记录", "Audit events")}
           </p>
           <ol className="mt-3 space-y-3">
             {finding.events.map((event) => (
@@ -356,6 +339,8 @@ function DetailTerm({ label, value }: { label: string; value: string }) {
 export default async function InspectionDetailPage({
   params,
 }: PageProps<"/inspections/[id]">) {
+  const locale = await getLocale();
+  const l = (zh: string, en: string) => (locale === "zh" ? zh : en);
   const { id } = await params;
   const result = await getCloudInspectionDetail(id);
 
@@ -370,23 +355,23 @@ export default async function InspectionDetailPage({
   return (
     <ProductShell
       activeItem="records"
-      pageLabel="巡检详情"
-      title={result.ok ? result.data.inspectionNumber : "巡检详情"}
+      pageLabel={l("巡检详情", "Inspection Details")}
+      title={result.ok ? result.data.inspectionNumber : l("巡检详情", "Inspection Details")}
     >
       {result.ok ? (
-        <InspectionDetailContent inspection={result.data} />
+        <InspectionDetailContent inspection={result.data} locale={locale} />
       ) : (
         <main className="mx-auto w-full max-w-[1440px] px-4 py-10 sm:px-6 lg:px-8">
           <section className="rounded-2xl border border-red-200 bg-red-50 p-6">
             <h1 className="text-lg font-bold text-red-900">
-              巡检详情暂时无法读取
+              {l("巡检详情暂时无法读取", "Inspection details are temporarily unavailable")}
             </h1>
             <p className="mt-2 text-sm text-red-700">{result.error}</p>
             <Link
               href="/inspections"
               className="mt-5 inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
             >
-              返回巡检列表
+              {l("返回巡检列表", "Back to inspections")}
             </Link>
           </section>
         </main>
@@ -397,9 +382,12 @@ export default async function InspectionDetailPage({
 
 function InspectionDetailContent({
   inspection,
+  locale,
 }: {
   inspection: CloudInspectionDetail;
+  locale: Locale;
 }) {
+  const l = (zh: string, en: string) => (locale === "zh" ? zh : en);
   const photoNames = new Map(
     inspection.photos.map((photo) => [photo.id, photo.originalFileName]),
   );
@@ -416,7 +404,7 @@ function InspectionDetailContent({
         href="/inspections"
         className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 transition hover:text-blue-700"
       >
-        ← 返回云端巡检记录
+        ← {l("返回云端巡检记录", "Back to cloud inspections")}
       </Link>
 
       <section className="mt-5 overflow-hidden rounded-3xl bg-[#0b1728] px-6 py-7 text-white shadow-sm sm:px-8 sm:py-9">
@@ -427,30 +415,30 @@ function InspectionDetailContent({
                 {inspection.projectCode}
               </span>
               <span className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-300/20">
-                {inspection.status === "ARCHIVED" ? "已归档" : "已提交"}
+                {inspection.status === "ARCHIVED" ? l("已归档", "Archived") : l("已提交", "Submitted")}
               </span>
             </div>
             <h1 className="mt-4 text-2xl font-bold sm:text-3xl">
               {inspection.inspectionNumber}
             </h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-              {inspection.summary || "本次巡检尚未填写摘要。"}
+              {inspection.summary || l("本次巡检尚未填写摘要。", "No summary was provided for this inspection.")}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-2 lg:min-w-80">
-            <HeroMetric label="问题" value={inspection.findings.length} />
-            <HeroMetric label="未关闭" value={openFindingCount} />
-            <HeroMetric label="照片" value={inspection.photos.length} />
+            <HeroMetric label={l("问题", "Findings")} value={inspection.findings.length} />
+            <HeroMetric label={l("未关闭", "Open")} value={openFindingCount} />
+            <HeroMetric label={l("照片", "Photos")} value={inspection.photos.length} />
           </div>
         </div>
       </section>
 
       <section className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
-        <DetailTerm label="所属项目" value={inspection.projectName} />
-        <DetailTerm label="巡检位置" value={inspection.location} />
-        <DetailTerm label="巡检员" value={inspection.inspectorName} />
+        <DetailTerm label={l("所属项目", "Project")} value={inspection.projectName} />
+        <DetailTerm label={l("巡检位置", "Location")} value={inspection.location} />
+        <DetailTerm label={l("巡检员", "Inspector")} value={inspection.inspectorName} />
         <DetailTerm
-          label="提交时间"
+          label={l("提交时间", "Submitted at")}
           value={formatDate(inspection.submittedAt)}
         />
       </section>
@@ -459,20 +447,20 @@ function InspectionDetailContent({
         <p className="text-xs font-semibold tracking-[0.16em] text-blue-600">
           INSPECTOR NOTE
         </p>
-        <h2 className="mt-2 text-xl font-bold text-slate-950">巡检备注</h2>
+        <h2 className="mt-2 text-xl font-bold text-slate-950">{l("巡检备注", "Inspection Note")}</h2>
         <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-          {inspection.note || "本次巡检没有填写文字备注。"}
+          {inspection.note || l("本次巡检没有填写文字备注。", "No written note was provided for this inspection.")}
         </p>
       </section>
 
       <section className="mt-8">
         <SectionTitle
           eyebrow="FORMAL FINDINGS"
-          title="正式问题与整改要求"
+          title={l("正式问题与整改要求", "Official Findings & Corrective Actions")}
           count={inspection.findings.length}
         />
         {inspection.findings.length === 0 ? (
-          <EmptyBlock text="本次正式巡检没有问题记录。" />
+          <EmptyBlock text={l("本次正式巡检没有问题记录。", "This official inspection has no findings.")} />
         ) : (
           <div className="mt-4 grid gap-4 xl:grid-cols-2">
             {inspection.findings.map((finding) => (
@@ -480,6 +468,7 @@ function InspectionDetailContent({
                 key={finding.id}
                 finding={finding}
                 photoNames={photoNames}
+                locale={locale}
               />
             ))}
           </div>
@@ -489,11 +478,11 @@ function InspectionDetailContent({
       <section className="mt-8">
         <SectionTitle
           eyebrow="VISUAL EVIDENCE"
-          title="私有证据照片与检测框"
+          title={l("私有证据照片与检测框", "Private Evidence Photos & Detection Boxes")}
           count={inspection.photos.length}
         />
         {inspection.photos.length === 0 ? (
-          <EmptyBlock text="本次巡检没有保存证据照片。" />
+          <EmptyBlock text={l("本次巡检没有保存证据照片。", "No evidence photos were saved for this inspection.")} />
         ) : (
           <div className="mt-4 grid items-start gap-5 xl:grid-cols-2">
             {inspection.photos.map((photo) => (
@@ -501,6 +490,7 @@ function InspectionDetailContent({
                 key={photo.id}
                 photo={photo}
                 referencedDetectionIds={referencedDetectionIds}
+                locale={locale}
               />
             ))}
           </div>
@@ -510,11 +500,11 @@ function InspectionDetailContent({
       <section className="mt-8">
         <SectionTitle
           eyebrow="REPORT ARCHIVE"
-          title="正式报告归档"
+          title={l("正式报告归档", "Official Report Archive")}
           count={inspection.reports.length}
         />
         {inspection.reports.length === 0 ? (
-          <EmptyBlock text="这条巡检尚未归档正式报告；当前仍可在新建巡检工作区生成本地 PDF。" />
+          <EmptyBlock text={l("这条巡检尚未归档正式报告；当前仍可在新建巡检工作区生成本地 PDF。", "No official report has been archived. A local PDF can still be generated from the inspection workspace.")} />
         ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {inspection.reports.map((report) => (
@@ -535,11 +525,11 @@ function InspectionDetailContent({
                     rel="noreferrer"
                     className="mt-4 inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
                   >
-                    安全下载
+                    {l("安全下载", "Secure download")}
                   </a>
                 ) : (
                   <p className="mt-3 text-sm text-red-600">
-                    下载链接暂时不可用
+                    {l("下载链接暂时不可用", "Download link unavailable")}
                   </p>
                 )}
               </article>

@@ -6,25 +6,27 @@ import {
   getCloudInspectionList,
   type CloudInspectionListItem,
 } from "@/lib/cloud-inspection-queries";
+import { getLocale } from "@/lib/i18n-server";
+import type { Locale } from "@/lib/i18n";
 
 export const metadata: Metadata = {
   title: "云端巡检记录 | Site Inspection AI",
 };
 
-const dateFormatter = new Intl.DateTimeFormat("zh-CN", {
+function formatDate(value: string, locale: Locale) {
+  const dateFormatter = new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-SG", {
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
-});
-
-function formatDate(value: string) {
+  });
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "时间未知" : dateFormatter.format(date);
+  return Number.isNaN(date.getTime()) ? (locale === "zh" ? "时间未知" : "Time unavailable") : dateFormatter.format(date);
 }
 
-function InspectionCard({ inspection }: { inspection: CloudInspectionListItem }) {
+function InspectionCard({ inspection, locale }: { inspection: CloudInspectionListItem; locale: Locale }) {
+  const l = (zh: string, en: string) => (locale === "zh" ? zh : en);
   return (
     <Link
       href={`/inspections/${inspection.id}`}
@@ -43,7 +45,7 @@ function InspectionCard({ inspection }: { inspection: CloudInspectionListItem })
                   : "bg-emerald-50 text-emerald-700"
               }`}
             >
-              {inspection.status === "ARCHIVED" ? "已归档" : "已提交"}
+              {inspection.status === "ARCHIVED" ? l("已归档", "Archived") : l("已提交", "Submitted")}
             </span>
           </div>
           <h2 className="mt-3 truncate text-lg font-bold text-slate-950 transition group-hover:text-blue-700">
@@ -53,7 +55,7 @@ function InspectionCard({ inspection }: { inspection: CloudInspectionListItem })
             {inspection.projectName} · {inspection.location}
           </p>
           <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">
-            {inspection.summary || "本次巡检尚未填写摘要。"}
+            {inspection.summary || l("本次巡检尚未填写摘要。", "No summary was provided for this inspection.")}
           </p>
         </div>
         <div className="shrink-0 text-left sm:text-right">
@@ -61,25 +63,25 @@ function InspectionCard({ inspection }: { inspection: CloudInspectionListItem })
             {inspection.inspectorName}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            {formatDate(inspection.submittedAt)}
+            {formatDate(inspection.submittedAt, locale)}
           </p>
         </div>
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-2 border-t border-slate-100 pt-4 sm:grid-cols-5">
-        <Metric label="问题" value={inspection.findingCount} />
+        <Metric label={l("问题", "Findings")} value={inspection.findingCount} />
         <Metric
-          label="未关闭"
+          label={l("未关闭", "Open")}
           value={inspection.openFindingCount}
           tone={inspection.openFindingCount > 0 ? "amber" : "default"}
         />
         <Metric
-          label="高风险"
+          label={l("高风险", "High risk")}
           value={inspection.highRiskFindingCount}
           tone={inspection.highRiskFindingCount > 0 ? "red" : "default"}
         />
-        <Metric label="照片" value={inspection.photoCount} />
-        <Metric label="报告" value={inspection.reportCount} />
+        <Metric label={l("照片", "Photos")} value={inspection.photoCount} />
+        <Metric label={l("报告", "Reports")} value={inspection.reportCount} />
       </div>
     </Link>
   );
@@ -110,6 +112,8 @@ function Metric({
 }
 
 export default async function InspectionsPage() {
+  const locale = await getLocale();
+  const l = (zh: string, en: string) => (locale === "zh" ? zh : en);
   const result = await getCloudInspectionList();
 
   if (!result.ok && result.status === 401) {
@@ -129,8 +133,8 @@ export default async function InspectionsPage() {
   return (
     <ProductShell
       activeItem="records"
-      pageLabel="云端巡检记录"
-      title="已提交巡检与团队证据中心"
+      pageLabel={l("云端巡检记录", "Cloud Inspection Records")}
+      title={l("已提交巡检与团队证据中心", "Submitted Inspections & Team Evidence")}
     >
       <main className="mx-auto w-full max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
         <section className="overflow-hidden rounded-3xl bg-[#0b1728] px-6 py-7 text-white shadow-sm sm:px-8 sm:py-9">
@@ -140,30 +144,30 @@ export default async function InspectionsPage() {
                 CLOUD INSPECTION REGISTER
               </p>
               <h1 className="mt-3 text-2xl font-bold sm:text-3xl">
-                云端正式巡检记录
+                {l("云端正式巡检记录", "Official Cloud Inspection Records")}
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                这里仅展示已经正式提交或归档的记录。草稿仍只对创建者可见，并保留在新建巡检工作区中。
+                {l("这里仅展示已经正式提交或归档的记录。草稿仍只对创建者可见，并保留在新建巡检工作区中。", "Only officially submitted or archived records appear here. Drafts remain private to their creator in the new inspection workspace.")}
               </p>
             </div>
             <Link
               href="/"
               className="inline-flex w-fit items-center justify-center rounded-xl bg-amber-400 px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-amber-300"
             >
-              + 新建智能巡检
+              + {l("新建智能巡检", "New AI Inspection")}
             </Link>
           </div>
         </section>
 
         <section className="mt-6 grid gap-4 sm:grid-cols-3">
-          <SummaryCard label="正式巡检" value={inspections.length} />
+          <SummaryCard label={l("正式巡检", "Official inspections")} value={inspections.length} />
           <SummaryCard
-            label="待处理问题"
+            label={l("待处理问题", "Open findings")}
             value={openFindingCount}
             tone={openFindingCount > 0 ? "amber" : "default"}
           />
           <SummaryCard
-            label="高风险问题"
+            label={l("高风险问题", "High-risk findings")}
             value={highRiskFindingCount}
             tone={highRiskFindingCount > 0 ? "red" : "default"}
           />
@@ -171,7 +175,7 @@ export default async function InspectionsPage() {
 
         {!result.ok ? (
           <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-6">
-            <h2 className="font-bold text-red-900">云端记录暂时无法读取</h2>
+            <h2 className="font-bold text-red-900">{l("云端记录暂时无法读取", "Cloud records are temporarily unavailable")}</h2>
             <p className="mt-2 text-sm text-red-700">{result.error}</p>
           </section>
         ) : inspections.length === 0 ? (
@@ -180,16 +184,16 @@ export default async function InspectionsPage() {
               ✓
             </div>
             <h2 className="mt-4 text-lg font-bold text-slate-900">
-              暂无正式巡检记录
+              {l("暂无正式巡检记录", "No official inspection records")}
             </h2>
             <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-600">
-              完成照片识别、AI 分析和人工审核后，选择所属项目并提交到云端，正式记录会显示在这里。
+              {l("完成照片识别、AI 分析和人工审核后，选择所属项目并提交到云端，正式记录会显示在这里。", "Complete photo detection, AI analysis and human review, then select a project and submit to the cloud. The official record will appear here.")}
             </p>
             <Link
               href="/"
               className="mt-5 inline-flex rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
-              开始第一次巡检
+              {l("开始第一次巡检", "Start your first inspection")}
             </Link>
           </section>
         ) : (
@@ -200,16 +204,16 @@ export default async function InspectionsPage() {
                   INSPECTION LOG
                 </p>
                 <h2 className="mt-1 text-xl font-bold text-slate-950">
-                  最近提交
+                  {l("最近提交", "Recent submissions")}
                 </h2>
               </div>
               <p className="text-sm text-slate-500">
-                共 {inspections.length} 条
+                {inspections.length} {l("条", "records")}
               </p>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               {inspections.map((inspection) => (
-                <InspectionCard key={inspection.id} inspection={inspection} />
+                <InspectionCard key={inspection.id} inspection={inspection} locale={locale} />
               ))}
             </div>
           </section>

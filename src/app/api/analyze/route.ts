@@ -32,6 +32,7 @@ const VisionDetectionSchema = z.object({
 });
 
 const RequestSchema = z.object({
+  locale: z.enum(["zh", "en"]).default("zh"),
   note: z.string().trim().min(3).max(5000),
   photoEvidence: z
     .array(
@@ -122,6 +123,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const outputLanguage =
+      parsedRequest.data.locale === "en" ? "English" : "Simplified Chinese";
+    const unknownLocation =
+      parsedRequest.data.locale === "en" ? "Not provided" : "未提供";
+
     const systemPrompt = `
 你是施工现场巡检记录辅助工具。
 
@@ -141,7 +147,7 @@ export async function POST(request: Request) {
 5. 每个 finding 的 status 必须是 AI_DRAFT。
 6. 每个 finding 的 requires_human_review 必须是 true。
 7. 如果没有属于支持范围的问题，findings 返回空数组。
-8. location 无法确定时填写“未提供”。
+8. location 无法确定时填写“${unknownLocation}”。
 9. 只输出合法 JSON。
 10. 不要输出 Markdown 代码块、解释、标题或其他文字。
 11. 视觉检测结果来自施工 PPE 目标检测模型，只能证明模型检测到了对应类别，不能证明未检测到的物体不存在。
@@ -155,6 +161,7 @@ export async function POST(request: Request) {
 19. 每个 finding 都必须包含 evidence_detection_ids 数组。如果使用了视觉检测证据，必须逐项列出对应检测结果的准确 detectionId；如果只来自文字备注，返回空数组。
 20. evidence_detection_ids 只能使用 photo_evidence 中实际提供的 detectionId，不能改写或编造，并且对应检测必须来自 evidence_photos 已列出的照片。
 21. detectionId 只用于 evidence_detection_ids 结构化字段，不要把它写进 title、description、visible_evidence、corrective_action 或 uncertainty。
+22. location、summary、title、description、visible_evidence、corrective_action 和 uncertainty 的自然语言内容必须使用 ${outputLanguage}。枚举值和 JSON 字段名保持下方结构指定的英文格式。
 
 必须使用以下 JSON 结构：
 {

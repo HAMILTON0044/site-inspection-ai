@@ -1,7 +1,9 @@
 import { signOut } from "@/app/auth/actions";
+import { getTranslator } from "@/lib/i18n-server";
 import { createClient } from "@/lib/supabase/server";
 
 export async function AuthStatus() {
+  const { t } = await getTranslator();
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const claims = data?.claims;
@@ -18,11 +20,14 @@ export async function AuthStatus() {
 
   const displayName =
     profile?.display_name ||
-    (typeof claims.email === "string" ? claims.email : "当前用户");
-  const roleLabel = profile?.role === "MANAGER" ? "Manager" : "巡检员";
+    (typeof claims.email === "string" ? claims.email : t("common.currentUser"));
+  const roleLabel =
+    profile?.role === "MANAGER"
+      ? t("common.manager")
+      : t("common.inspector");
 
   return (
-    <aside className="fixed right-3 top-3 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-3 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:right-5 sm:px-4">
+    <aside className="fixed right-[7.25rem] top-3 z-50 flex max-w-[calc(100vw-8rem)] items-center gap-3 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:right-[8rem] sm:px-4">
       <div className="min-w-0 text-right">
         <p className="max-w-28 truncate text-xs font-semibold text-slate-900 sm:max-w-44 sm:text-sm">
           {displayName}
@@ -33,7 +38,7 @@ export async function AuthStatus() {
       </div>
       <form action={signOut}>
         <button className="rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 sm:px-3 sm:text-sm">
-          退出
+          {t("common.signOut")}
         </button>
       </form>
     </aside>

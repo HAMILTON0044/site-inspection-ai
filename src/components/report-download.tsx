@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 import type { InspectionAnalysis } from "@/lib/schemas";
 import type { VisionDetection } from "@/lib/vision";
 import { createClient } from "@/lib/supabase/client";
+import { detectionLabel, type Locale } from "@/lib/i18n";
 
 type ReviewDecision = "PENDING" | "APPROVED" | "REJECTED";
 
@@ -24,19 +26,6 @@ type ReportDownloadProps = {
   disabled: boolean;
 };
 
-const detectionLabels: Record<VisionDetection["label"], string> = {
-  Hardhat: "安全帽",
-  Mask: "口罩",
-  "NO-Hardhat": "未佩戴安全帽",
-  "NO-Mask": "未佩戴口罩",
-  "NO-Safety Vest": "未穿安全背心",
-  Person: "人员",
-  "Safety Cone": "安全锥",
-  "Safety Vest": "安全背心",
-  machinery: "机械设备",
-  vehicle: "车辆",
-};
-
 function getReportNumber(date: Date) {
   const datePart = [
     date.getFullYear(),
@@ -52,7 +41,7 @@ function getReportNumber(date: Date) {
   return `SIR-${datePart}-${timePart}`;
 }
 
-async function renderPhotoForReport(photo: ReportSourcePhoto) {
+async function renderPhotoForReport(photo: ReportSourcePhoto, locale: Locale) {
   const bitmap = await createImageBitmap(photo.file);
   const maxDimension = 1600;
   const scale = Math.min(
@@ -66,7 +55,7 @@ async function renderPhotoForReport(photo: ReportSourcePhoto) {
 
   if (context === null) {
     bitmap.close();
-    throw new Error("无法创建报告图片画布。");
+    throw new Error(locale === "zh" ? "无法创建报告图片画布。" : "Unable to create the report image canvas.");
   }
 
   context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
@@ -86,7 +75,7 @@ async function renderPhotoForReport(photo: ReportSourcePhoto) {
     const y = detection.box.y * scale;
     const width = detection.box.width * scale;
     const height = detection.box.height * scale;
-    const label = `${detectionLabels[detection.label]} ${Math.round(
+    const label = `${detectionLabel(locale, detection.label)} ${Math.round(
       detection.confidence * 100,
     )}%`;
 
@@ -108,21 +97,21 @@ async function renderPhotoForReport(photo: ReportSourcePhoto) {
     imageData: canvas.toDataURL("image/jpeg", 0.86),
     detectionSummary: includedDetections.map(
       (detection) =>
-        `${detectionLabels[detection.label]} ${Math.round(
+        `${detectionLabel(locale, detection.label)} ${Math.round(
           detection.confidence * 100,
         )}%`,
     ),
   };
 }
 
-async function loadInspectorName() {
+async function loadInspectorName(locale: Locale) {
   try {
     const supabase = createClient();
     const { data: authData } = await supabase.auth.getUser();
     const user = authData.user;
 
     if (user === null) {
-      return "当前巡检员";
+      return locale === "zh" ? "当前巡检员" : "Current inspector";
     }
 
     const { data: profile } = await supabase
@@ -131,9 +120,9 @@ async function loadInspectorName() {
       .eq("id", user.id)
       .maybeSingle();
 
-    return profile?.display_name || user.email || "当前巡检员";
+    return profile?.display_name || user.email || (locale === "zh" ? "当前巡检员" : "Current inspector");
   } catch {
-    return "当前巡检员";
+    return locale === "zh" ? "当前巡检员" : "Current inspector";
   }
 }
 
@@ -147,6 +136,8 @@ export function ReportDownload({
   inspectionId,
   disabled,
 }: ReportDownloadProps) {
+  const { locale } = useLanguage();
+  const l = (zh: string, en: string) => (locale === "zh" ? zh : en);
   const [generating, setGenerating] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [message, setMessage] = useState("");
@@ -162,8 +153,8 @@ export function ReportDownload({
         await Promise.all([
           import("@react-pdf/renderer"),
           import("@/components/inspection-report-document"),
-          loadInspectorName(),
-          Promise.all(photos.map(renderPhotoForReport)),
+          loadInspectorName(locale),
+          Promise.all(photos.map((photo) => renderPhotoForReport(photo, locale))),
         ]);
 
       reportModule.registerInspectionReportFonts(
@@ -178,9 +169,10 @@ export function ReportDownload({
       ).length;
       const reportData = {
         reportNumber,
-        projectName: projectName || "未指定项目",
+        locale,
+        projectName: projectName || l("未指定项目", "Unspecified project"),
         inspectorName,
-        generatedAt: new Intl.DateTimeFormat("zh-CN", {
+        generatedAt: new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-SG", {
           year: "numeric",
           month: "2-digit",
           day: "2-digit",
@@ -213,7 +205,7 @@ export function ReportDownload({
             });
 
           if (uploadError) {
-            throw new Error(`报告归档上传失败：${uploadError.message}`);
+            throw new Error(l(`报告归档上传失败：${uploadError.message}`, `Report archive upload failed: ${uploadError.message}`));
           }
 
           const archiveResponse = await fetch(`/api/inspections/${inspectionId}/reports`, {
@@ -223,7 +215,7 @@ export function ReportDownload({
           });
 
           if (!archiveResponse.ok) {
-            let archiveMessage = "报告归档失败。";
+            let archiveMessage = l("报告归档失败。", "Report archiving failed.");
             try {
               const archiveBody = (await archiveResponse.json()) as { error?: string };
               archiveMessage = archiveBody.error || archiveMessage;
@@ -248,21 +240,21 @@ export function ReportDownload({
       const downloadUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = downloadUrl;
-      anchor.download = `${reportNumber}-施工现场巡检报告.pdf`;
+      anchor.download = `${reportNumber}-${l("施工现场巡检报告", "site-inspection-report")}.pdf`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
       URL.revokeObjectURL(downloadUrl);
       setMessage(
         inspectionId && projectId
-          ? "PDF 报告已归档并开始下载。"
-          : "PDF 报告已生成并开始下载。",
+          ? l("PDF 报告已归档并开始下载。", "The PDF report has been archived and is downloading.")
+          : l("PDF 报告已生成并开始下载。", "The PDF report has been generated and is downloading."),
       );
     } catch (error) {
       setMessage(
         error instanceof Error
-          ? `PDF 生成失败：${error.message}`
-          : "PDF 生成失败，请稍后重试。",
+          ? l(`PDF 生成失败：${error.message}`, `PDF generation failed: ${error.message}`)
+          : l("PDF 生成失败，请稍后重试。", "PDF generation failed. Please try again."),
       );
     } finally {
       setGenerating(false);
@@ -294,22 +286,22 @@ export function ReportDownload({
         </svg>
         {generating
           ? archiving
-            ? "正在归档 PDF……"
-            : "正在生成 PDF……"
+            ? l("正在归档 PDF……", "Archiving PDF…")
+            : l("正在生成 PDF……", "Generating PDF…")
           : inspectionId && projectId
-            ? "归档并下载 PDF"
-            : "下载正式 PDF 报告"}
+            ? l("归档并下载 PDF", "Archive & download PDF")
+            : l("下载正式 PDF 报告", "Download official PDF")}
       </button>
       {disabled && (
         <p className="text-right text-xs text-amber-700">
-          请先批准或驳回全部问题，再生成正式报告。
+          {l("请先批准或驳回全部问题，再生成正式报告。", "Approve or reject every finding before generating the official report.")}
         </p>
       )}
       {message && (
         <p
           aria-live="polite"
           className={`text-right text-xs ${
-            message.startsWith("PDF 生成失败")
+            message.startsWith("PDF 生成失败") || message.startsWith("PDF generation failed")
               ? "text-red-700"
               : "text-emerald-700"
           }`}

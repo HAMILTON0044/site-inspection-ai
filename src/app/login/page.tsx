@@ -1,4 +1,6 @@
 import { signIn, signUp } from "./actions";
+import { getTranslator } from "@/lib/i18n-server";
+import { translateKnownValue } from "@/lib/i18n";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -9,6 +11,7 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { error, message } = await searchParams;
+  const { locale, t } = await getTranslator();
 
   return (
     <main className="grid min-h-screen bg-white lg:grid-cols-[minmax(420px,0.9fr)_minmax(540px,1.1fr)]">
@@ -30,20 +33,20 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
 
         <div className="relative max-w-xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-300">Safer sites. Clearer decisions.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-300">{t("login.heroEyebrow")}</p>
           <h1 className="mt-5 text-4xl font-bold leading-tight tracking-tight xl:text-5xl">
-            <span className="block">让每一次现场巡检</span>
-            <span className="block text-amber-300">都有证据可追溯</span>
+            <span className="block">{t("login.heroLine1")}</span>
+            <span className="block text-amber-300">{t("login.heroLine2")}</span>
           </h1>
           <p className="mt-6 max-w-lg text-base leading-8 text-slate-300">
-            从现场照片识别、AI 问题草拟到人工复核和云端归档，将分散的巡检信息汇聚成清晰的整改闭环。
+            {t("login.heroDescription")}
           </p>
 
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
             {[
-              ["本地识别", "照片无需发送给 LLM"],
-              ["人工复核", "结论由巡检员确认"],
-              ["团队协作", "正式记录统一归档"],
+              [t("login.feature.localTitle"), t("login.feature.localDetail")],
+              [t("login.feature.reviewTitle"), t("login.feature.reviewDetail")],
+              [t("login.feature.teamTitle"), t("login.feature.teamDetail")],
             ].map(([title, detail]) => (
               <div key={title} className="border-l border-white/20 pl-4">
                 <p className="text-sm font-semibold text-white">{title}</p>
@@ -53,7 +56,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
         </div>
 
-        <p className="relative text-xs text-slate-500">AI 辅助判断 · 最终安全结论须经人工确认</p>
+        <p className="relative text-xs text-slate-500">{t("login.disclaimer")}</p>
       </section>
 
       <section className="flex min-h-screen items-center justify-center bg-[#f7f8fa] px-5 py-10 sm:px-10">
@@ -68,39 +71,39 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             <p className="text-sm font-bold tracking-wide text-slate-950">SITE INSPECTION AI</p>
           </div>
 
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Secure workspace</p>
-          <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">欢迎回来</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">{t("login.eyebrow")}</p>
+          <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">{t("login.title")}</h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            登录后继续巡检、审核问题并将正式记录提交到项目空间。
+            {t("login.subtitle")}
           </p>
 
           {error && (
             <p className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
+              {translateKnownValue(locale, error)}
             </p>
           )}
 
           {message && (
             <p className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-              {message}
+              {translateKnownValue(locale, message)}
             </p>
           )}
 
           <form className="mt-8 space-y-5">
             <label className="block text-sm font-semibold text-slate-700">
-              姓名
+              {t("login.name")}
               <input
                 name="displayName"
                 type="text"
                 autoComplete="name"
                 maxLength={100}
                 className="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 font-normal text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                placeholder="注册时填写，登录时可留空"
+                placeholder={t("login.namePlaceholder")}
               />
             </label>
 
             <label className="block text-sm font-semibold text-slate-700">
-              邮箱
+              {t("login.email")}
               <input
                 name="email"
                 type="email"
@@ -112,7 +115,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </label>
 
             <label className="block text-sm font-semibold text-slate-700">
-              密码
+              {t("login.password")}
               <input
                 name="password"
                 type="password"
@@ -120,7 +123,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 required
                 minLength={8}
                 className="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 font-normal text-slate-950 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                placeholder="至少 8 个字符"
+                placeholder={t("login.passwordPlaceholder")}
               />
             </label>
 
@@ -129,20 +132,20 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 formAction={signIn}
                 className="rounded-xl bg-slate-950 px-5 py-3.5 font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
               >
-                登录工作台
+                {t("login.signIn")}
               </button>
               <button
                 formAction={signUp}
                 className="rounded-xl border border-slate-300 bg-white px-5 py-3.5 font-semibold text-slate-800 shadow-sm transition hover:border-blue-400 hover:text-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-100"
               >
-                注册巡检员
+                {t("login.signUp")}
               </button>
             </div>
           </form>
 
           <div className="mt-7 flex gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-500 shadow-sm">
             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-600">i</span>
-            <p>新注册账号固定为巡检员。Manager 权限只能由项目管理员在受信任环境中授予。</p>
+            <p>{t("login.roleNotice")}</p>
           </div>
         </div>
       </section>
