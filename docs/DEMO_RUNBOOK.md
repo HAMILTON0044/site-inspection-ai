@@ -1,5 +1,9 @@
 # 演示环境运行手册
 
+完整的“从注册开始”操作步骤、6 分钟演示流程、逐段演讲稿和现场故障预案见：
+
+- [`DEMO_SCRIPT_CN.md`](./DEMO_SCRIPT_CN.md)
+
 ## 1. 准备账号和项目
 
 `scripts/provision-demo.mjs` 只在受信任的本地终端运行，需要 Supabase Service Role Key。不要把这些环境变量写入 Git 或浏览器配置。
